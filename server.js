@@ -19,6 +19,7 @@ function getRoomList() {
         const pList = Object.values(game.players);
         roomData.push({
             name: roomName,
+            status: game.status, // 'lobby' or 'playing'
             blue: pList.filter(p => p.team === 1).length,
             red: pList.filter(p => p.team === 2).length
         });
@@ -36,9 +37,11 @@ io.on('connection', (socket) => {
 
         if (!games[room]) {
             games[room] = {
+                host: socket.id, // First player is host
+                status: 'lobby',
                 players: {},
                 crates: [],
-                seed: Math.random(),
+                seed: Math.random(), // Shared seed for terrain
                 lastCrate: Date.now()
             };
         }
@@ -51,17 +54,21 @@ io.on('connection', (socket) => {
             name: name || `Trooper ${socket.id.substr(0,3)}`,
             team: parseInt(team),
             x: team == 1 ? 200 : 5800,
-            y: 0,
+            y: -500, // Spawn high
             hp: 100,
             shield: 0,
+            lives: 5, // 5 Lives
             angle: 0,
             turretAngle: 0,
             dead: false
         };
 
+        // Send Init Data
         socket.emit('init', {
             id: socket.id,
             team: team,
+            isHost: (game.host === socket.id),
+            gameStatus: game.status,
             seed: game.seed,
             crates: game.crates,
             players: game.players 
@@ -71,10 +78,35 @@ io.on('connection', (socket) => {
         io.emit('roomList', getRoomList());
     });
 
+    // --- HOST STARTS GAME ---
+    socket.on('requestStartGame', () => {
+        const room = socket.data.room;
+        if (!room || !games[room]) return;
+        const game = games[room];
+
+        // Security: Only host can start
+        if (game.host !== socket.id) return;
+
+        // Logic: Needs 1 player per team
+        const blues = Object.values(game.players).filter(p => p.team === 1).length;
+        const reds = Object.values(game.players).filter(p => p.team === 2).length;
+
+        if (blues > 0 && reds > 0) {
+            game.status = 'playing';
+            io.to(room).emit('gameStarted');
+            io.emit('roomList', getRoomList()); // Update status for outsiders
+        } else {
+            socket.emit('notification', 'NEED 1 PLAYER PER TEAM TO START');
+        }
+    });
+
     socket.on('updateState', (state) => {
         const room = socket.data.room;
         if (room && games[room] && games[room].players[socket.id]) {
-            Object.assign(games[room].players[socket.id], state);
+            // Don't update if dead, unless it's a respawn sync
+            if (!games[room].players[socket.id].dead) {
+                Object.assign(games[room].players[socket.id], state);
+            }
         }
     });
 
@@ -86,21 +118,65 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- FIX: Handle Hits and Death Explicitly ---
     socket.on('hit', (data) => {
         const room = socket.data.room;
-        // Broadcast hit to everyone so they see the explosion/impact
         if(room) socket.broadcast.to(room).emit('hitConfirmed', data); 
     });
 
+    // --- HANDLING DEATH & RESPAWN ---
     socket.on('died', () => {
         const room = socket.data.room;
         if (room && games[room] && games[room].players[socket.id]) {
-            games[room].players[socket.id].hp = 0;
-            games[room].players[socket.id].dead = true;
-            socket.broadcast.to(room).emit('playerDied', socket.id);
+            const p = games[room].players[socket.id];
+            
+            if (p.dead) return; // Already handled
+
+            p.lives -= 1;
+            p.dead = true;
+            p.hp = 0;
+            
+            io.to(room).emit('playerDied', { id: socket.id, lives: p.lives });
+
+            if (p.lives > 0) {
+                // RESPAWN LOGIC
+                setTimeout(() => {
+                    if (!games[room] || !games[room].players[socket.id]) return;
+                    
+                    // Respawn at random X, high Y
+                    p.dead = false;
+                    p.hp = 100;
+                    p.shield = 0;
+                    p.x = Math.floor(Math.random() * 5000) + 500;
+                    p.y = -500; // Drop from sky
+                    
+                    io.to(room).emit('playerRespawn', p);
+                }, 3000); // 3 Second Respawn Timer
+            } else {
+                // CHECK WIN CONDITION
+                checkWinCondition(room);
+            }
         }
     });
+
+    function checkWinCondition(room) {
+        const game = games[room];
+        const pList = Object.values(game.players);
+
+        const blueAlive = pList.some(p => p.team === 1 && p.lives > 0);
+        const redAlive = pList.some(p => p.team === 2 && p.lives > 0);
+
+        if (!blueAlive && !redAlive) {
+            io.to(room).emit('gameOver', { winner: 'DRAW' });
+            delete games[room];
+        } else if (!blueAlive) {
+            io.to(room).emit('gameOver', { winner: 'RED TEAM' });
+            delete games[room];
+        } else if (!redAlive) {
+            io.to(room).emit('gameOver', { winner: 'BLUE TEAM' });
+            delete games[room];
+        }
+        io.emit('roomList', getRoomList());
+    }
 
     socket.on('crateCollected', (id) => {
         const room = socket.data.room;
@@ -115,7 +191,22 @@ io.on('connection', (socket) => {
         if (room && games[room]) {
             delete games[room].players[socket.id];
             io.to(room).emit('playerLeft', socket.id);
-            if (Object.keys(games[room].players).length === 0) delete games[room];
+            
+            // If host left, assign new host if anyone remains
+            if (games[room].host === socket.id) {
+                const remaining = Object.keys(games[room].players);
+                if (remaining.length > 0) {
+                    games[room].host = remaining[0];
+                    // Notify the new host (optional, or just let client logic handle permissions)
+                }
+            }
+
+            if (Object.keys(games[room].players).length === 0) {
+                delete games[room];
+            } else {
+                // Check win condition in case the last enemy left
+                if (games[room].status === 'playing') checkWinCondition(room);
+            }
             io.emit('roomList', getRoomList());
         }
     });
@@ -125,16 +216,19 @@ setInterval(() => {
     const now = Date.now();
     for (const room in games) {
         const game = games[room];
-        io.to(room).emit('stateUpdate', game.players);
+        // Only sync state and spawn crates if playing
+        if (game.status === 'playing') {
+            io.to(room).emit('stateUpdate', game.players);
 
-        if (now - game.lastCrate > 10000 && game.crates.length < 5) {
-            game.lastCrate = now;
-            const id = Math.random().toString(36).substr(2, 9);
-            const type = ['repair', 'ammo', 'shield', 'scatter', 'seeker', 'nuke'][Math.floor(Math.random() * 6)];
-            const x = Math.floor(Math.random() * 5800) + 100;
-            const crate = { id, x, y: -100, type };
-            game.crates.push(crate);
-            io.to(room).emit('crateSpawned', crate);
+            if (now - game.lastCrate > 10000 && game.crates.length < 5) {
+                game.lastCrate = now;
+                const id = Math.random().toString(36).substr(2, 9);
+                const type = ['repair', 'ammo', 'shield', 'scatter', 'seeker', 'nuke'][Math.floor(Math.random() * 6)];
+                const x = Math.floor(Math.random() * 5800) + 100;
+                const crate = { id, x, y: -100, type };
+                game.crates.push(crate);
+                io.to(room).emit('crateSpawned', crate);
+            }
         }
     }
 }, 1000 / 30);

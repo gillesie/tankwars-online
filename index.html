@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Artillery Blitz 3.1: [ONLINE WARFARE]</title>
+    <title>Artillery Blitz 4.0: [ONLINE WARFARE]</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
@@ -145,6 +145,7 @@
         button:hover { background: #0ff; color: #000; box-shadow: 0 0 40px rgba(0, 255, 255, 0.8); transform: scale(1.05); }
         button.secondary { border-color: #f0f; color: #f0f; }
         button.secondary:hover { background: #f0f; color: #000; box-shadow: 0 0 40px rgba(255, 0, 255, 0.8); }
+        button:disabled { border-color: #555; color: #555; box-shadow: none; cursor: not-allowed; }
         
         .hidden { display: none !important; }
         
@@ -168,36 +169,40 @@
         .log-entry { margin-top: 4px; opacity: 0.8; }
 		
 		/* NEW LOBBY STYLES */
-.lobby-container { display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 600px; }
-.lobby-row { display: flex; gap: 10px; }
-.lobby-input { 
-    background: rgba(0,0,0,0.8); border: 1px solid #0ff; color: #fff; 
-    padding: 15px; font-family: 'Orbitron'; flex: 1; font-size: 18px; 
-}
-.room-list { 
-    margin-top: 20px; max-height: 300px; overflow-y: auto; 
-    border: 1px solid #055; background: rgba(0,20,40,0.5); padding: 10px; 
-}
-.room-item { 
-    display: flex; justify-content: space-between; padding: 10px; 
-    border-bottom: 1px solid #033; cursor: pointer; transition: 0.2s;
-}
-.room-item:hover { background: #003344; }
-.team-select-btn { flex: 1; border: 1px solid #555; color: #555; }
-.team-select-btn.selected-blue { border-color: #0ff; background: rgba(0, 255, 255, 0.2); color: #0ff; box-shadow: 0 0 15px #0ff; }
-.team-select-btn.selected-red { border-color: #f00; background: rgba(255, 0, 0, 0.2); color: #f00; box-shadow: 0 0 15px #f00; }
+        .lobby-container { display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 600px; }
+        .lobby-row { display: flex; gap: 10px; }
+        .lobby-input { 
+            background: rgba(0,0,0,0.8); border: 1px solid #0ff; color: #fff; 
+            padding: 15px; font-family: 'Orbitron'; flex: 1; font-size: 18px; 
+        }
+        .room-list { 
+            margin-top: 20px; max-height: 300px; overflow-y: auto; 
+            border: 1px solid #055; background: rgba(0,20,40,0.5); padding: 10px; 
+        }
+        .room-item { 
+            display: flex; justify-content: space-between; padding: 10px; 
+            border-bottom: 1px solid #033; cursor: pointer; transition: 0.2s;
+        }
+        .room-item:hover { background: #003344; }
+        .team-select-btn { flex: 1; border: 1px solid #555; color: #555; }
+        .team-select-btn.selected-blue { border-color: #0ff; background: rgba(0, 255, 255, 0.2); color: #0ff; box-shadow: 0 0 15px #0ff; }
+        .team-select-btn.selected-red { border-color: #f00; background: rgba(255, 0, 0, 0.2); color: #f00; box-shadow: 0 0 15px #f00; }
 
-/* NEW SCOREBOARD (Top Right) */
-#scoreboard {
-    position: absolute; top: 160px; right: 20px; /* CHANGED FROM 80px TO 160px */
-    width: 200px; background: rgba(0,0,0,0.7); 
-    border: 1px solid #0ff; padding: 10px; 
-    pointer-events: none; display: none;
-}
-.sb-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
-.sb-header { font-weight: bold; border-bottom: 1px solid #555; margin-bottom: 5px; padding-bottom: 2px; }
-.sb-blue { color: #0ff; }
-.sb-red { color: #f33; }
+        /* NEW SCOREBOARD (Top Right) */
+        #scoreboard {
+            position: absolute; top: 160px; right: 20px;
+            width: 200px; background: rgba(0,0,0,0.7); 
+            border: 1px solid #0ff; padding: 10px; 
+            pointer-events: none; display: none;
+        }
+        .sb-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+        .sb-header { font-weight: bold; border-bottom: 1px solid #555; margin-bottom: 5px; padding-bottom: 2px; }
+        .sb-blue { color: #0ff; }
+        .sb-red { color: #f33; }
+
+        #lobby-status-msg { text-align: center; color: #ff0; margin-top: 10px; font-size: 14px; }
+        #waiting-area { display: none; flex-direction: column; align-items: center; width: 100%; }
+        #waiting-player-list { width: 100%; text-align: center; margin: 20px 0; color: #aaa; }
     </style>
 </head>
 <body>
@@ -216,7 +221,7 @@
             <div class="stat-box" style="text-align: center;">
                 <span class="stat-label" id="level-label">MISSION STATUS</span>
                 <span class="stat-value" id="hud-level" style="font-size: 24px;">ONLINE PVP</span>
-                <div style="font-size: 10px; color:#aaa; margin-top:5px;">HOLD JUMP: BOOST | [SCROLL] ZOOM</div>
+                <div style="color: #ff0; font-weight: bold; margin-top: 5px;">LIVES: <span id="hud-lives">5</span></div>
             </div>
 
             <div class="stat-box weapon-selector">
@@ -272,44 +277,48 @@
     </div>
 
     <div id="mp-lobby-screen" class="hidden">
-    <h1>GLOBAL LOBBY</h1>
-    <div class="lobby-container">
-        <div class="lobby-row">
-            <input id="inp-name" class="lobby-input" type="text" placeholder="PILOT NAME" maxlength="12">
-            <input id="inp-room" class="lobby-input" type="text" placeholder="ROOM CODE (e.g. WARZONE)" maxlength="10">
-        </div>
+        <h1>GLOBAL LOBBY</h1>
         
-        <div class="lobby-row">
-            <button id="btn-team-1" class="team-select-btn" onclick="setTeam(1)">JOIN BLUE</button>
-            <button id="btn-team-2" class="team-select-btn" onclick="setTeam(2)">JOIN RED</button>
+        <div id="join-area" class="lobby-container">
+            <div class="lobby-row">
+                <input id="inp-name" class="lobby-input" type="text" placeholder="PILOT NAME" maxlength="12">
+                <input id="inp-room" class="lobby-input" type="text" placeholder="ROOM CODE (e.g. WARZONE)" maxlength="10">
+            </div>
+            
+            <div class="lobby-row">
+                <button id="btn-team-1" class="team-select-btn" onclick="setTeam(1)">JOIN BLUE</button>
+                <button id="btn-team-2" class="team-select-btn" onclick="setTeam(2)">JOIN RED</button>
+            </div>
+
+            <button onclick="joinGame()" style="margin-top: 10px; width: 100%;">CONNECT TO LOBBY</button>
+            
+            <h3 style="margin-top:20px; border-bottom: 1px solid #0ff;">ACTIVE SECTORS</h3>
+            <div id="room-list-container" class="room-list">
+                <div style="text-align: center; color: #555;">SCANNING FREQUENCIES...</div>
+            </div>
         </div>
 
-        <button onclick="joinGame()" style="margin-top: 10px; width: 100%;">DEPLOY TO SECTOR</button>
-        
-        <h3 style="margin-top:20px; border-bottom: 1px solid #0ff;">ACTIVE BATTLES</h3>
-        <div id="room-list-container" class="room-list">
-            <div style="text-align: center; color: #555;">SCANNING FREQUENCIES...</div>
+        <div id="waiting-area">
+            <h2>DEPLOYMENT STANDBY</h2>
+            <div id="waiting-player-list">Waiting for pilots...</div>
+            <div id="lobby-status-msg"></div>
+            <button id="btn-start-game" class="hidden" onclick="requestStart()" style="border-color: #0f0; color: #0f0;">INITIATE BATTLE</button>
         </div>
     </div>
-</div>
 
-<div id="ui-layer">
-    <div class="hud-top">
+    <div id="ui-layer">
+        <div id="scoreboard">
+            <div class="sb-header">BLUE TEAM <span id="sb-count-1">0</span></div>
+            <div id="sb-list-1"></div>
+            <div class="sb-header" style="margin-top:10px; color: #f33;">RED TEAM <span id="sb-count-2">0</span></div>
+            <div id="sb-list-2"></div>
         </div>
-    
-    <div id="scoreboard">
-        <div class="sb-header">BLUE TEAM <span id="sb-count-1">0</span></div>
-        <div id="sb-list-1"></div>
-        <div class="sb-header" style="margin-top:10px; color: #f33;">RED TEAM <span id="sb-count-2">0</span></div>
-        <div id="sb-list-2"></div>
-    </div>
-
     </div>
 
     <div id="game-over-screen" class="hidden">
-        <h1 style="-webkit-text-fill-color: #f00; text-shadow: 0 0 30px #f00;">CRITICAL FAILURE</h1>
-        <h2 id="go-score">K.I.A.</h2>
-        <button onclick="location.reload()">SYSTEM REBOOT</button>
+        <h1 style="-webkit-text-fill-color: #f00; text-shadow: 0 0 30px #f00;">MISSION TERMINATED</h1>
+        <h2 id="go-score">WINNER: ???</h2>
+        <button onclick="location.reload()">RETURN TO BASE</button>
     </div>
 
     <script>
@@ -320,9 +329,10 @@
         let socket;
         let isMultiplayer = true;
         let myId = null;
-        let myTeam = 1; // 1: Blue, 2: Red
-        let remotePlayers = {}; // Map of ID -> Tank Data
-        let crates = []; // Networked Crates
+        let myTeam = 1; 
+        let isHost = false;
+        let remotePlayers = {}; 
+        let crates = []; 
 
         /**
          * ENGINE CORE
@@ -337,10 +347,13 @@
         const JUMP_FORCE = -10;
         const JUMP_SUSTAIN = -0.5; 
         
-        // State
+        // --- FIX 1: CONSTANT WORLD HEIGHT ---
+        // This ensures terrain generation is identical regardless of window size
+        const WORLD_HEIGHT = 1500;
+
         let width, height;
         let lastTime = 0;
-        let gameActive = false;
+        let gameActive = false; // Only true when 'playing'
         let wind = 0;
         let screenShake = 0;
         let seed = 1; 
@@ -360,7 +373,7 @@
             }
         };
 
-        // Seeded Random for Map Sync
+        // Seeded Random
         function seededRandom() {
             var t = seed += 0x6D2B79F5;
             t = Math.imul(t ^ t >>> 15, t | 1);
@@ -393,7 +406,9 @@
             const amplitude = 150;
             
             for (let x = 0; x <= TERRAIN_WIDTH; x += SEGMENT_SIZE) {
-                let y = height * 0.8; 
+                // --- FIX 1 APPLIED HERE ---
+                // Use WORLD_HEIGHT instead of canvas height
+                let y = WORLD_HEIGHT * 0.8; 
                 y += Math.sin(x * 0.002) * amplitude;
                 y += Math.sin(x * 0.01) * (amplitude * 0.3 * jaggedness);
                 terrainPoints.push({x, y});
@@ -414,7 +429,7 @@
         }
 
         function getTerrainHeight(x) {
-            if (x < 0 || x > TERRAIN_WIDTH) return height + 1000;
+            if (x < 0 || x > TERRAIN_WIDTH) return WORLD_HEIGHT + 1000;
             const index = Math.floor(x / SEGMENT_SIZE);
             if (index >= terrainPoints.length - 1) return terrainPoints[terrainPoints.length-1].y;
             const p1 = terrainPoints[index];
@@ -449,10 +464,7 @@
 
         class Crate {
             constructor(id, x, y, type) {
-                this.id = id;
-                this.x = x; this.y = y;
-                this.type = type;
-                this.landed = false;
+                this.id = id; this.x = x; this.y = y; this.type = type; this.landed = false;
             }
             update() {
                 if (!this.landed) {
@@ -460,26 +472,21 @@
                     this.x += Math.sin(Date.now() * 0.005) * 1;
                     const tH = getTerrainHeight(this.x);
                     if (this.y >= tH - 15) { this.y = tH - 15; this.landed = true; }
-                    
                     platforms.forEach(p => {
                         if(this.x > p.x && this.x < p.x+p.width && Math.abs(this.y - p.y) < 50) {
                             this.y = p.y - 15; this.landed = true; 
                         }
                     });
                 }
-                
-                // Only local player can collect crates to send signal
-                if (player && dist(this.x, this.y, player.x, player.y) < 40) {
+                if (player && !player.dead && dist(this.x, this.y, player.x, player.y) < 40) {
                     this.collect();
                 }
             }
             collect() {
                 socket.emit('crateCollected', this.id);
-                // Apply effect immediately locally for responsiveness
                 this.applyEffect(player);
-                // Remove locally immediately
                 crates = crates.filter(c => c.id !== this.id);
-                createExplosion(this.x, this.y, 'heal'); // Small poof
+                createExplosion(this.x, this.y, 'heal');
             }
             applyEffect(tank) {
                 log(`ACQUIRED: ${this.type.toUpperCase()}`);
@@ -535,7 +542,6 @@
             update() {
                 if (!this.active) return;
 
-                // Seeker Logic
                 if (this.type === 'seeker') {
                     let targets = [];
                     if (player && player.team !== this.team && !player.dead) targets.push(player);
@@ -566,10 +572,8 @@
 
                 if (this.type !== 'seeker') this.vx += wind;
 
-                // --- PHYSICS FIX: SUB-STEPPING ---
-                // Perform movement in small steps to prevent tunneling through ground
                 const speed = Math.sqrt(this.vx**2 + this.vy**2);
-                const steps = Math.ceil(speed / 5) + 1; // Ensure at least 1 step, more if fast
+                const steps = Math.ceil(speed / 5) + 1; 
                 const stepVx = this.vx / steps;
                 const stepVy = this.vy / steps;
 
@@ -577,29 +581,22 @@
                     this.x += stepVx;
                     this.y += stepVy;
 
-                    // Ground Collision
                     if (this.y >= getTerrainHeight(this.x)) { 
-                        this.explode(); 
-                        return; 
+                        this.explode(); return; 
                     }
                     
-                    // Platform Collision
                     for (let p of platforms) {
                         if (this.x > p.x && this.x < p.x + p.width && Math.abs(this.y - p.y) < 20) {
-                            this.explode();
-                            return;
+                            this.explode(); return;
                         }
                     }
 
-                    // Entity Collision (Hitbox)
                     if (player && player.team !== this.team && !player.dead) {
                         if (dist(this.x, this.y, player.x, player.y) < 30) {
-                            this.explode();
-                            return;
+                            this.explode(); return;
                         }
                     }
                 }
-
                 this.trail.push({x: this.x, y: this.y});
                 if (this.trail.length > 10) this.trail.shift();
             }
@@ -612,7 +609,6 @@
                 ctx.strokeStyle = this.team === 1 ? '#0ff' : '#f00';
                 if (this.type === 'nuke') ctx.strokeStyle = '#ff0';
                 ctx.lineWidth = 2; ctx.stroke();
-
                 ctx.fillStyle = '#fff';
                 ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fill();
             }
@@ -626,16 +622,11 @@
                 if (this.type === 'nuke') { radius = 300; damage = 100; }
                 if (this.type === 'laser') { damage = 30; }
                 
-                // Damage Logic: Only the VICTIM calculates their own damage to ensure fairness
                 if (player && player.team !== this.team && !player.dead) {
                      if (dist(this.x, this.y, player.x, player.y) < radius) {
                          player.takeDamage(damage);
-                         // Tell server "I got hit" so others see it
                          socket.emit('hit', { 
-                             damage: damage, 
-                             x: player.x, 
-                             y: player.y, 
-                             victimId: myId 
+                             damage: damage, x: player.x, y: player.y, victimId: myId 
                          });
                      }
                 }
@@ -646,23 +637,19 @@
             constructor(isLocal, team, id) {
                 this.id = id;
                 this.isLocal = isLocal;
-                this.team = team; // 1 = Blue, 2 = Red
+                this.team = team; 
                 this.width = 30; this.height = 15;
                 
-                // Position
                 this.x = isLocal ? (team === 1 ? 200 : TERRAIN_WIDTH - 200) : 0;
-                this.y = 0;
+                this.y = -500; // Default spawn high
                 this.vx = 0; this.vy = 0;
                 
-                // Interpolation
-                this.targetX = this.x; 
-                this.targetY = this.y;
-                
-                this.angle = 0; 
-                this.turretAngle = team === 1 ? 315 : 225;
+                this.targetX = this.x; this.targetY = this.y;
+                this.angle = 0; this.turretAngle = team === 1 ? 315 : 225;
                 
                 this.hp = 100; this.maxHp = 100;
-                this.shield = 0; // Shield property
+                this.shield = 0; 
+                this.lives = 5;
                 this.name = isLocal ? "YOU" : "ENEMY";
                 this.dead = false;
 				
@@ -675,30 +662,32 @@
             }
 
             update() {
-                if (this.isLocal) {
-                    // LOCAL CONTROL - Improved Physics
-                    this.vx = 0;
-                    if (keys['ArrowLeft'] || keys['a']) this.vx = -4;
-                    if (keys['ArrowRight'] || keys['d']) this.vx = 4;
-                    
-                    // Variable Jump
-                    if ((keys['ArrowUp'] || keys[' '] || keys['Space'])) {
-                        if (this.onGround) {
-                            this.vy = JUMP_FORCE; 
-                            this.groundStartHeight = this.y;
-                            this.onGround = false;
-                        } else if (this.vy < 0) {
-                             // Jump Sustain
-                             if (Math.abs(this.y - this.groundStartHeight) < 200) {
-                                 this.vy += JUMP_SUSTAIN; 
-                             }
-                        }
-                    }
+                if (this.dead) return;
 
-                    // Aiming
-                    const trueWorldX = mousePos.x / camera.zoom + camera.x;
-                    const trueWorldY = mousePos.y / camera.zoom + camera.y;
-                    this.turretAngle = Math.atan2(trueWorldY - (this.y - 10), trueWorldX - this.x) * 180 / Math.PI;
+                if (this.isLocal) {
+                    this.vx = 0;
+                    // --- INPUT ---
+                    // Only move if game is ACTIVE
+                    if (gameActive) {
+                        if (keys['ArrowLeft'] || keys['a']) this.vx = -4;
+                        if (keys['ArrowRight'] || keys['d']) this.vx = 4;
+                        
+                        if ((keys['ArrowUp'] || keys[' '] || keys['Space'])) {
+                            if (this.onGround) {
+                                this.vy = JUMP_FORCE; 
+                                this.groundStartHeight = this.y;
+                                this.onGround = false;
+                            } else if (this.vy < 0) {
+                                 if (Math.abs(this.y - this.groundStartHeight) < 200) {
+                                     this.vy += JUMP_SUSTAIN; 
+                                 }
+                            }
+                        }
+                        
+                        const trueWorldX = mousePos.x / camera.zoom + camera.x;
+                        const trueWorldY = mousePos.y / camera.zoom + camera.y;
+                        this.turretAngle = Math.atan2(trueWorldY - (this.y - 10), trueWorldX - this.x) * 180 / Math.PI;
+                    }
 
                     // Physics
                     this.vy += GRAVITY;
@@ -706,7 +695,6 @@
                     
                     this.handleCollisions();
 
-                    // Network Sync
                     if (socket) {
                         socket.emit('updateState', { 
                             x: this.x, y: this.y, 
@@ -718,8 +706,14 @@
                     }
                 } else {
                     // REMOTE INTERPOLATION
-                    this.x += (this.targetX - this.x) * 0.2;
-                    this.y += (this.targetY - this.y) * 0.2;
+                    // Snap if too far (Respawn fix)
+                    if(dist(this.x, this.y, this.targetX, this.targetY) > 500) {
+                        this.x = this.targetX;
+                        this.y = this.targetY;
+                    } else {
+                        this.x += (this.targetX - this.x) * 0.2;
+                        this.y += (this.targetY - this.y) * 0.2;
+                    }
                 }
             }
 
@@ -747,6 +741,7 @@
             }
 
             fire(power) {
+                if (!gameActive) return;
                 const rad = this.turretAngle * (Math.PI / 180);
                 const bx = this.x + Math.cos(rad) * 20;
                 const by = (this.y - 15) + Math.sin(rad) * 20;
@@ -777,11 +772,12 @@
             }
 
             takeDamage(amount) {
-                // Shield logic
+                if (this.dead || !gameActive) return;
+
                 if (this.shield > 0) {
                     this.shield -= amount;
                     if (this.shield < 0) {
-                        this.hp += this.shield; // overflow damage to HP
+                        this.hp += this.shield; 
                         this.shield = 0;
                     }
                 } else {
@@ -791,20 +787,30 @@
                 if (this.hp <= 0) {
                     createExplosion(this.x, this.y, 'nuke');
                     if (this.isLocal) {
+                        // Logic is handled by server ack, but we send event
                         socket.emit('died');
-                        endGame(false);
                     }
                 }
                 updateHUD();
             }
 
             draw(ctx) {
-				if(this.dead) return;
+                // Ghost if dead
+                if(this.dead) {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = '#555';
+                    ctx.font = "12px Orbitron";
+                    ctx.fillText("K.I.A.", -15, -10);
+                    ctx.restore();
+                    return;
+                }
+
                 ctx.save();
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.angle);
 
-                // Team Colors
                 const color = this.team === 1 ? '#0ff' : '#f00';
 
                 ctx.shadowBlur = 15;
@@ -813,19 +819,16 @@
                 ctx.lineWidth = 2;
                 ctx.fillStyle = '#000';
 
-                // Body
                 ctx.beginPath();
                 ctx.moveTo(-15, 0); ctx.lineTo(15, 0);
                 ctx.lineTo(10, -15); ctx.lineTo(-10, -15);
                 ctx.closePath(); ctx.fill(); ctx.stroke();
                 
-                // Shield Rendering
                 if (this.shield > 0) {
                     ctx.strokeStyle = '#ff0'; ctx.beginPath();
                     ctx.arc(0, -7, 25, 0, Math.PI*2); ctx.stroke();
                 }
 
-                // Name Tag
                 if (!this.isLocal) {
                     ctx.shadowBlur = 0;
                     ctx.fillStyle = color;
@@ -836,7 +839,6 @@
 
                 ctx.restore();
 
-                // Turret
                 ctx.save();
                 ctx.translate(this.x, this.y - 7);
                 ctx.rotate(this.turretAngle * Math.PI / 180);
@@ -845,7 +847,6 @@
                 ctx.fillRect(0, -3, 30, 6);
                 ctx.restore();
 
-                // Health Bar for Remotes
                 if (!this.isLocal) {
                     ctx.fillStyle = '#f00'; ctx.fillRect(this.x - 20, this.y - 50, 40, 4);
                     ctx.fillStyle = '#0f0'; ctx.fillRect(this.x - 20, this.y - 50, 40 * (this.hp / this.maxHp), 4);
@@ -883,13 +884,13 @@
             });
 
             canvas.addEventListener('mousedown', e => {
-                if (e.button === 0 && gameActive && player) { 
+                if (e.button === 0 && gameActive && player && !player.dead) { 
                     isCharging = true; mousePressedTime = Date.now();
                 }
             });
 
             canvas.addEventListener('mouseup', e => {
-                if (e.button === 0 && isCharging && gameActive && player) {
+                if (e.button === 0 && isCharging && gameActive && player && !player.dead) {
                     const duration = Date.now() - mousePressedTime;
                     let pwr = Math.min(duration / 40, 25);
                     pwr = Math.max(pwr, 2);
@@ -911,89 +912,92 @@
             animate();
         }
 
-        // --- ADD VARIABLES ---
-let selectedTeam = 1;
+        let selectedTeam = 1;
 
-// --- LOBBY FUNCTIONS ---
-function initGame(mode) {
-    // Check weapons config
-    const weps = document.getElementById('cfg-weapons').value;
-    gameConfig.unlockWeapons = (weps === 'loaded');
-    
-    document.getElementById('start-screen').classList.add('hidden');
-    
-    // Show Lobby instead of connecting immediately
-    document.getElementById('mp-lobby-screen').classList.remove('hidden');
-    
-    // Force Default Team Selection (Blue)
-    setTeam(1);
+        function initGame(mode) {
+            const weps = document.getElementById('cfg-weapons').value;
+            gameConfig.unlockWeapons = (weps === 'loaded');
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('mp-lobby-screen').classList.remove('hidden');
+            setTeam(1);
+            connectSocket();
+        }
 
-    // Connect socket to get room list
-    connectSocket();
-}
+        function setTeam(t) {
+            selectedTeam = t;
+            document.getElementById('btn-team-1').className = t===1 ? 'team-select-btn selected-blue' : 'team-select-btn';
+            document.getElementById('btn-team-2').className = t===2 ? 'team-select-btn selected-red' : 'team-select-btn';
+        }
 
-function setTeam(t) {
-    selectedTeam = t;
-    document.getElementById('btn-team-1').className = t===1 ? 'team-select-btn selected-blue' : 'team-select-btn';
-    document.getElementById('btn-team-2').className = t===2 ? 'team-select-btn selected-red' : 'team-select-btn';
-}
+        function connectSocket() {
+            if(socket) return;
+            socket = io(SERVER_URL);
 
-function connectSocket() {
-    if(socket) return;
-    socket = io(SERVER_URL);
+            socket.on('roomList', (rooms) => {
+                const container = document.getElementById('room-list-container');
+                container.innerHTML = '';
+                if(rooms.length === 0) container.innerHTML = '<div style="padding:10px; color:#555;">NO ACTIVE SIGNALS. CREATE A ROOM.</div>';
+                
+                rooms.forEach(r => {
+                    const div = document.createElement('div');
+                    div.className = 'room-item';
+                    div.innerHTML = `
+                        <span style="color:#fff; font-weight:bold;">${r.name} ${r.status==='playing'?'[LIVE]':''}</span>
+                        <span><span style="color:#0ff">${r.blue}</span> vs <span style="color:#f00">${r.red}</span></span>
+                    `;
+                    div.onclick = () => { document.getElementById('inp-room').value = r.name; };
+                    container.appendChild(div);
+                });
+            });
+            
+            socket.on('notification', (msg) => {
+                alert(msg);
+            });
+        }
 
-    socket.on('roomList', (rooms) => {
-        const container = document.getElementById('room-list-container');
-        container.innerHTML = '';
-        if(rooms.length === 0) container.innerHTML = '<div style="padding:10px; color:#555;">NO ACTIVE SIGNALS. CREATE A ROOM.</div>';
+        function joinGame() {
+            const name = document.getElementById('inp-name').value || "Unknown";
+            const room = document.getElementById('inp-room').value || "Global";
+            
+            if (socket) {
+                socket.off('init');
+                socket.off('playerJoined');
+                socket.off('playerLeft');
+                socket.off('stateUpdate');
+                socket.off('playerFired');
+                socket.off('crateSpawned');
+                socket.off('crateRemoved');
+                socket.off('gameStarted');
+                socket.off('playerDied');
+                socket.off('playerRespawn');
+                socket.off('gameOver');
+            }
+
+            setupGameListeners();
+
+            socket.emit('createOrJoin', {
+                room: room.toUpperCase(),
+                name: name,
+                team: selectedTeam
+            });
+
+            // Switch UI to "Waiting"
+            document.getElementById('join-area').style.display = 'none';
+            document.getElementById('waiting-area').style.display = 'flex';
+        }
         
-        rooms.forEach(r => {
-            const div = document.createElement('div');
-            div.className = 'room-item';
-            div.innerHTML = `
-                <span style="color:#fff; font-weight:bold;">${r.name}</span>
-                <span><span style="color:#0ff">${r.blue}</span> vs <span style="color:#f00">${r.red}</span></span>
-            `;
-            div.onclick = () => {
-                document.getElementById('inp-room').value = r.name;
-            };
-            container.appendChild(div);
-        });
-    });
-}
+        function requestStart() {
+            socket.emit('requestStartGame');
+        }
 
-function joinGame() {
-    const name = document.getElementById('inp-name').value || "Unknown";
-    const room = document.getElementById('inp-room').value || "Global";
-    
-    // Ensure listeners are clean before adding new ones
-    if (socket) {
-        socket.off('init');
-        socket.off('playerJoined');
-        socket.off('playerLeft');
-        socket.off('stateUpdate');
-        socket.off('playerFired');
-        socket.off('crateSpawned');
-        socket.off('crateRemoved');
-    }
-
-    // 1. SETUP LISTENERS FIRST so we don't miss the 'init' event
-    setupGameListeners();
-
-    // 2. THEN emit the request
-    socket.emit('createOrJoin', {
-        room: room.toUpperCase(),
-        name: name,
-        team: selectedTeam
-    });
-}
-
-function setupGameListeners() {
-            // 1. Initialization
+        function setupGameListeners() {
             socket.on('init', (data) => {
                 myId = data.id;
                 myTeam = data.team;
                 seed = data.seed; 
+                isHost = data.isHost;
+
+                if(isHost) document.getElementById('btn-start-game').classList.remove('hidden');
                 
                 if(data.crates) crates = data.crates.map(c => new Crate(c.id, c.x, c.y, c.type));
 
@@ -1003,10 +1007,6 @@ function setupGameListeners() {
                     }
                 }
 
-                document.getElementById('mp-lobby-screen').classList.add('hidden');
-                document.getElementById('scoreboard').style.display = 'block';
-                document.getElementById('hud-level').innerText = "SECTOR: " + (socket.data?.room || "ONLINE");
-                
                 const hpBox = document.getElementById('hp-box');
                 hpBox.className = 'stat-box'; 
                 hpBox.classList.add(myTeam === 1 ? 'team-1-hud' : 'team-2-hud');
@@ -1014,123 +1014,147 @@ function setupGameListeners() {
                 generateTerrain();
                 player = new Tank(true, myTeam, myId);
                 player.name = document.getElementById('inp-name').value || "YOU";
-                gameActive = true;
+                
+                // If game is already playing (joining mid-game)
+                if(data.gameStatus === 'playing') {
+                    startGameClient();
+                } else {
+                    updateLobbyStatus();
+                }
                 updateScoreboard();
             });
 
             socket.on('playerJoined', (data) => {
                 if(data.id === myId) return;
                 handlePlayerJoin(data);
+                updateLobbyStatus();
             });
             
+            socket.on('gameStarted', () => {
+                startGameClient();
+            });
+
             socket.on('playerLeft', (id) => {
                 if(remotePlayers[id]) {
                     log(`${remotePlayers[id].name} DISCONNECTED`);
                     delete remotePlayers[id];
                     updateScoreboard();
+                    updateLobbyStatus();
                 }
             });
 
-            // 3. Game Loop Sync
             socket.on('stateUpdate', (serverPlayers) => {
                 for (let id in serverPlayers) {
                     if (id !== myId) {
                         if (!remotePlayers[id]) handlePlayerJoin(serverPlayers[id]);
-                        
                         const p = remotePlayers[id];
                         const s = serverPlayers[id];
-                        p.targetX = s.x;
-                        p.targetY = s.y;
+                        p.targetX = s.x; p.targetY = s.y;
                         p.turretAngle = s.turretAngle;
-                        p.hp = s.hp;
-                        p.shield = s.shield || 0;
+                        p.hp = s.hp; p.shield = s.shield || 0;
                         p.angle = s.angle;
-                        // If server says they are dead, ensure local client knows
-                        if (s.dead && !p.dead) {
-                            p.dead = true;
-                            createExplosion(p.x, p.y, 'nuke');
-                        }
+                        p.lives = s.lives;
+                        p.dead = s.dead;
                     }
                 }
             });
 
-            // 4. Actions & Events
             socket.on('playerFired', (data) => {
                 if (remotePlayers[data.id]) {
                     remotePlayers[data.id].spawnProjectile(data.x, data.y, data.angle, data.power, data.type);
                 }
             });
 
-            socket.on('crateSpawned', (c) => {
-                crates.push(new Crate(c.id, c.x, c.y, c.type));
-            });
+            socket.on('crateSpawned', (c) => crates.push(new Crate(c.id, c.x, c.y, c.type)));
+            socket.on('crateRemoved', (id) => crates = crates.filter(c => c.id !== id));
+            socket.on('hitConfirmed', (data) => { if (data.x) createExplosion(data.x, data.y, 'heal'); });
 
-            socket.on('crateRemoved', (id) => {
-                crates = crates.filter(c => c.id !== id);
-            });
-
-            // --- SYNC FIX: Hit Confirmation ---
-            socket.on('hitConfirmed', (data) => {
-                // Optional: Spawn a visual particle effect at the hit location
-                // This confirms to the attacker that the server registered the event
-                if (data.x && data.y) {
-                    createExplosion(data.x, data.y, 'heal'); // Reusing 'heal' (green) or create new spark
+            // --- DEATH & RESPAWN ---
+            socket.on('playerDied', (data) => {
+                let name = "ENEMY";
+                if (data.id === myId) {
+                    player.dead = true;
+                    player.lives = data.lives;
+                    updateHUD();
+                    name = "YOU";
+                } else if (remotePlayers[data.id]) {
+                    remotePlayers[data.id].dead = true;
+                    remotePlayers[data.id].lives = data.lives;
+                    name = remotePlayers[data.id].name;
+                    createExplosion(remotePlayers[data.id].x, remotePlayers[data.id].y, 'nuke');
                 }
+                log(`${name} DESTROYED. LIVES: ${data.lives}`);
+                updateScoreboard();
             });
 
-            // --- SYNC FIX: Player Death ---
-            socket.on('playerDied', (id) => {
-                if (remotePlayers[id]) {
-                    log(`${remotePlayers[id].name} WAS ELIMINATED`);
-                    remotePlayers[id].dead = true;
-                    remotePlayers[id].hp = 0;
-                    createExplosion(remotePlayers[id].x, remotePlayers[id].y, 'nuke');
-                    updateScoreboard();
-                }
+            socket.on('playerRespawn', (data) => {
+                 if (data.id === myId) {
+                     player.dead = false;
+                     player.hp = 100;
+                     player.x = data.x;
+                     player.y = data.y;
+                     player.vx = 0; player.vy = 0;
+                     updateHUD();
+                     log("SYSTEM REBOOT: ONLINE");
+                 } else if (remotePlayers[data.id]) {
+                     remotePlayers[data.id].dead = false;
+                     remotePlayers[data.id].x = data.x;
+                     remotePlayers[data.id].y = data.y;
+                 }
+            });
+
+            socket.on('gameOver', (data) => {
+                gameActive = false;
+                document.getElementById('game-over-screen').classList.remove('hidden');
+                document.getElementById('go-score').innerText = "VICTORY: " + data.winner;
             });
         }
 
-function handlePlayerJoin(data) {
-    log(`${data.name} JOINED (TEAM ${data.team})`);
-    const t = new Tank(false, data.team, data.id);
-    t.name = data.name;
-    remotePlayers[data.id] = t;
-    updateScoreboard();
-}
-
-function updateScoreboard() {
-    // Safety check: if player isn't initialized yet, abort
-    if (!player) return;
-	const blueList = document.getElementById('sb-list-1');
-    const redList = document.getElementById('sb-list-2');
-    blueList.innerHTML = ''; redList.innerHTML = '';
-
-    const allPlayers = [player, ...Object.values(remotePlayers)].filter(p => p); // include self
-    
-    let blueCount = 0;
-    let redCount = 0;
-
-    allPlayers.forEach(p => {
-        const div = document.createElement('div');
-        div.className = 'sb-row ' + (p.team === 1 ? 'sb-blue' : 'sb-red');
-        div.innerText = p.name + (p.id === myId ? " (YOU)" : "");
+        function startGameClient() {
+            document.getElementById('mp-lobby-screen').classList.add('hidden');
+            document.getElementById('scoreboard').style.display = 'block';
+            document.getElementById('hud-level').innerText = "SECTOR: " + (socket.data?.room || "ONLINE");
+            gameActive = true;
+            log("MISSION START");
+        }
         
-        if(p.team === 1) { blueList.appendChild(div); blueCount++; }
-        else { redList.appendChild(div); redCount++; }
-    });
+        function updateLobbyStatus() {
+             const count = Object.keys(remotePlayers).length + 1;
+             document.getElementById('waiting-player-list').innerHTML = 
+                `PILOTS READY: ${count}<br><span style="font-size:12px; color:#555;">WAITING FOR HOST TO START...</span>`;
+        }
 
-    document.getElementById('sb-count-1').innerText = blueCount;
-    document.getElementById('sb-count-2').innerText = redCount;
-    
-    // Also update the old counter if you want
-    document.getElementById('online-count').innerText = allPlayers.length;
-}
+        function handlePlayerJoin(data) {
+            log(`${data.name} JOINED (TEAM ${data.team})`);
+            const t = new Tank(false, data.team, data.id);
+            t.name = data.name;
+            t.lives = data.lives;
+            remotePlayers[data.id] = t;
+            updateScoreboard();
+        }
 
-              
+        function updateScoreboard() {
+            if (!player) return;
+            const blueList = document.getElementById('sb-list-1');
+            const redList = document.getElementById('sb-list-2');
+            blueList.innerHTML = ''; redList.innerHTML = '';
 
-        function updateOnlineCount() {
-            const count = Object.keys(remotePlayers).length + 1;
-            document.getElementById('online-count').innerText = count;
+            const allPlayers = [player, ...Object.values(remotePlayers)]; 
+            
+            let blueCount = 0; let redCount = 0;
+
+            allPlayers.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'sb-row ' + (p.team === 1 ? 'sb-blue' : 'sb-red');
+                const status = p.dead ? (p.lives > 0 ? "(RESPAWNING)" : "(K.I.A.)") : "";
+                div.innerText = `${p.name} [${p.lives}] ${status}`;
+                
+                if(p.team === 1) { blueList.appendChild(div); blueCount++; }
+                else { redList.appendChild(div); redCount++; }
+            });
+
+            document.getElementById('sb-count-1').innerText = blueCount;
+            document.getElementById('sb-count-2').innerText = redCount;
         }
 
         function log(msg) {
@@ -1140,11 +1164,6 @@ function updateScoreboard() {
             entry.innerText = "> " + msg;
             div.appendChild(entry);
             if(div.children.length > 5) div.removeChild(div.firstChild);
-        }
-
-        function endGame(win) {
-            gameActive = false;
-            document.getElementById('game-over-screen').classList.remove('hidden');
         }
 
         function createExplosion(x, y, type) {
@@ -1158,7 +1177,8 @@ function updateScoreboard() {
             if (!player) return;
             document.getElementById('hud-hp').style.width = (player.hp / player.maxHp * 100) + "%";
             document.getElementById('hud-hp-text').innerText = Math.ceil(player.hp) + "%";
-            document.getElementById('hud-shield').style.width = (player.shield / 50 * 100) + "%"; // Max shield assumed 50
+            document.getElementById('hud-shield').style.width = (player.shield / 50 * 100) + "%"; 
+            document.getElementById('hud-lives').innerText = player.lives;
             
             const weapons = ['standard', 'scatter', 'laser', 'seeker', 'nuke'];
             weapons.forEach(w => {
@@ -1200,9 +1220,7 @@ function updateScoreboard() {
             if (tank.currentWeapon === 'laser') {
                 simVx *= 2; simVy *= 2;
                 ctx.lineTo(simX + simVx * 200, simY + simVy * 200);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                return;
+                ctx.stroke(); ctx.setLineDash([]); return;
             }
 
             for(let i=0; i<100; i++) {
@@ -1212,8 +1230,7 @@ function updateScoreboard() {
                 ctx.lineTo(simX, simY);
                 if (simY >= getTerrainHeight(simX)) break;
             }
-            ctx.stroke();
-            ctx.setLineDash([]);
+            ctx.stroke(); ctx.setLineDash([]);
         }
 
         function drawBackground(ctx) {
@@ -1221,7 +1238,8 @@ function updateScoreboard() {
             grd.addColorStop(0, "#000510");
             grd.addColorStop(1, "#101025");
             ctx.fillStyle = grd;
-            ctx.fillRect(0, 0, width/camera.zoom + camera.x*2, height/camera.zoom + 1000); 
+            // Draw BG to cover whole camera area
+            ctx.fillRect(camera.x, camera.y, width/camera.zoom, height/camera.zoom); 
         }
 
         function drawTerrain(ctx) {
@@ -1234,10 +1252,13 @@ function updateScoreboard() {
             const startIdx = Math.max(0, Math.floor(viewX / SEGMENT_SIZE));
             const endIdx = Math.min(terrainPoints.length - 1, Math.ceil((viewX + viewW) / SEGMENT_SIZE));
 
-            ctx.moveTo(terrainPoints[startIdx].x, height + 500); 
-            ctx.lineTo(terrainPoints[startIdx].x, terrainPoints[startIdx].y);
-            for(let i=startIdx; i<=endIdx; i++) ctx.lineTo(terrainPoints[i].x, terrainPoints[i].y);
-            ctx.lineTo(terrainPoints[endIdx].x, height + 500);
+            if(terrainPoints[startIdx]) {
+                ctx.moveTo(terrainPoints[startIdx].x, WORLD_HEIGHT + 1000); 
+                for(let i=startIdx; i<=endIdx; i++) {
+                     if(terrainPoints[i]) ctx.lineTo(terrainPoints[i].x, terrainPoints[i].y);
+                }
+                if(terrainPoints[endIdx]) ctx.lineTo(terrainPoints[endIdx].x, WORLD_HEIGHT + 1000);
+            }
             ctx.fill();
 
             ctx.strokeStyle = '#0ff';
@@ -1255,7 +1276,6 @@ function updateScoreboard() {
             ctx.restore();
         }
 
-        // MAIN LOOP
         function animate() {
             requestAnimationFrame(animate);
             
@@ -1265,7 +1285,6 @@ function updateScoreboard() {
 
             if (gameActive && player) {
                 player.update();
-                
                 Object.values(remotePlayers).forEach(p => p.update());
                 projectiles.forEach(p => p.update());
                 particles.forEach(p => p.update());
@@ -1277,6 +1296,10 @@ function updateScoreboard() {
                 targetCamX = clamp(targetCamX, 0, TERRAIN_WIDTH - (width / camera.zoom));
                 camera.x += (targetCamX - camera.x) * 0.1;
                 camera.y += (targetCamY - camera.y) * 0.1;
+            } else if (player) {
+                // Spectator / Lobby idle cam (just slowly float)
+                camera.x += 0.5;
+                if (camera.x > 5000) camera.x = 0;
             }
 
             camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
@@ -1292,28 +1315,31 @@ function updateScoreboard() {
             ctx.scale(camera.zoom, camera.zoom);
             ctx.translate(-camera.x, -camera.y);
 
-            drawBackground(ctx);
+            // Fill generic BG
+            ctx.fillStyle = "#050510";
+            ctx.fillRect(camera.x, camera.y, width/camera.zoom, height/camera.zoom);
+
             drawTerrain(ctx);
 
             crates.forEach(c => c.draw(ctx));
 
-            if (player) player.draw(ctx);
+            if (player && gameActive) player.draw(ctx);
             
             Object.values(remotePlayers).forEach(p => p.draw(ctx));
             projectiles.forEach(p => p.draw(ctx));
             particles.forEach(p => p.draw(ctx));
 
-            // Trajectory
-            if (isCharging && player) drawTrajectory(ctx, player);
+            if (isCharging && player && gameActive) drawTrajectory(ctx, player);
 
             ctx.restore();
-            drawMinimap();
+            if(gameActive) drawMinimap();
         }
 
         function drawMinimap() {
             minimapCtx.fillStyle = '#000'; minimapCtx.fillRect(0, 0, 300, 180);
             const scaleX = 300 / TERRAIN_WIDTH;
-            const scaleY = 180 / height; 
+            // --- FIX 1b: MINIMAP SCALING ---
+            const scaleY = 180 / WORLD_HEIGHT; 
             
             minimapCtx.strokeStyle = '#055';
             minimapCtx.beginPath(); minimapCtx.moveTo(0, 180);
@@ -1326,8 +1352,10 @@ function updateScoreboard() {
             }
             
             Object.values(remotePlayers).forEach(e => {
-                minimapCtx.fillStyle = e.team === 1 ? '#0ff' : '#f00';
-                minimapCtx.fillRect(e.x * scaleX, e.y * scaleY, 4, 4);
+                if(!e.dead) {
+                    minimapCtx.fillStyle = e.team === 1 ? '#0ff' : '#f00';
+                    minimapCtx.fillRect(e.x * scaleX, e.y * scaleY, 4, 4);
+                }
             });
 
             minimapCtx.fillStyle = '#0f0';

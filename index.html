@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Artillery Blitz 5.0: [SUPERCHARGE]</title>
+    <title>Artillery Blitz 5.1: [BUILDER UPDATE]</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
@@ -58,7 +58,7 @@
         .bar-container { width: 100%; height: 8px; background: #111; margin-top: 5px; border-radius: 2px; overflow: hidden; }
         .bar-fill { height: 100%; width: 100%; transition: width 0.2s; }
         .hp-fill { background: linear-gradient(90deg, #f00, #f0f); }
-        .shield-fill { background: linear-gradient(90deg, #ff0, #fff); width: 0%; } /* New Shield Bar */
+        .shield-fill { background: linear-gradient(90deg, #ff0, #fff); width: 0%; }
         .power-fill { background: linear-gradient(90deg, #0ff, #fff); }
 
         /* WEAPON GRID STYLES */
@@ -90,6 +90,10 @@
         }
         .weapon-btn:hover { background: #033; border-color: #0ff; color: #fff; }
         .weapon-btn.active { background: #0aa; color: #000; border-color: #fff; box-shadow: 0 0 15px #0ff; font-weight: bold; }
+        /* Special builder button style */
+        .weapon-btn.builder { border-color: #f0f; color: #f0f; }
+        .weapon-btn.builder.active { background: #f0f; box-shadow: 0 0 15px #f0f; }
+        
         .w-icon { font-size: 16px; margin-bottom: 2px; }
 
         /* SCREENS */
@@ -232,6 +236,7 @@
                     <div class="weapon-btn" id="btn-laser" onclick="selectWeapon('laser')"><span class="w-icon">━</span><span>LASR</span><span id="ammo-laser">0</span></div>
                     <div class="weapon-btn" id="btn-seeker" onclick="selectWeapon('seeker')"><span class="w-icon">◎</span><span>SEEK</span><span id="ammo-seeker">0</span></div>
                     <div class="weapon-btn" id="btn-nuke" onclick="selectWeapon('nuke')"><span class="w-icon">☢</span><span>NUKE</span><span id="ammo-nuke">0</span></div>
+                    <div class="weapon-btn builder" id="btn-builder" onclick="selectWeapon('builder')"><span class="w-icon">⚒</span><span>BUILD</span><span id="ammo-builder">∞</span></div>
                 </div>
             </div>
         </div>
@@ -272,6 +277,7 @@
         
         <p style="margin-top: 20px; font-size: 12px;">
             CONTROLS: [A/D] Move • [SPACE] Jump (Hold) • [MOUSE] Aim/Fire • [SCROLL] Zoom<br>
+            BUILDER: Select Tool -> Drag to draw platform.<br>
             <span style="color: #f0f">REQUIRES SERVER.JS RUNNING ON LOCALHOST:3000</span>
         </p>
     </div>
@@ -363,12 +369,25 @@
         const keys = {};
         let mousePressedTime = 0;
         let isCharging = false;
+        
+        // Builder Vars
+        let isDrawing = false;
+        let drawStart = { x: 0, y: 0 };
 
         // Select Weapon
         window.selectWeapon = function(type) {
-            if (player && player.ammo[type] > 0) {
-                player.currentWeapon = type;
-                updateHUD();
+            if (player) {
+                // Check builder explicitly
+                if (type === 'builder') {
+                    player.currentWeapon = type;
+                    updateHUD();
+                    return;
+                }
+                
+                if (player.ammo[type] > 0) {
+                    player.currentWeapon = type;
+                    updateHUD();
+                }
             }
         };
 
@@ -397,7 +416,7 @@
         const terrainPoints = [];
         let platforms = []; 
 
-        function generateTerrain() {
+        function generateTerrain(destroyedIds = []) {
             terrainPoints.length = 0;
             platforms.length = 0;
             
@@ -419,7 +438,22 @@
                 const x = currentX + rand(100, 400);
                 let y = getTerrainHeight(x) - rand(100, 300);
                 if (y < 0) y = 100;
-                platforms.push({ x, y, width: w, height: 20, angle: rand(-15, 15) });
+                
+                const id = `static_${i}`;
+                
+                // Only add if not destroyed
+                if (!destroyedIds.includes(id)) {
+                    const isUnbreakable = rand(0, 1) > 0.8;
+                    platforms.push({ 
+                        id: id,
+                        x, y, width: w, height: 20, 
+                        angle: rand(-15, 15),
+                        hp: isUnbreakable ? Infinity : 200,
+                        maxHp: 200,
+                        type: isUnbreakable ? 'unbreakable' : 'standard'
+                    });
+                }
+                
                 currentX = x + w;
                 if (currentX > TERRAIN_WIDTH - 500) break;
             }
@@ -487,8 +521,6 @@
                 ctx.fillStyle = '#f00'; // Light
                 ctx.beginPath(); ctx.arc(20, 0, 2, 0, Math.PI*2); ctx.fill();
                 ctx.restore();
-                
-                // Draw Health? Maybe not needed for NPC unless hit
             }
         }
 
@@ -588,10 +620,14 @@
                 this.radius = (type === 'nuke') ? 6 : 3;
                 if (type === 'laser') { this.vx *= 2; this.vy *= 2; }
                 if (type === 'seeker') { this.vx *= 0.5; this.vy *= 0.5; } 
+                
+                // [FIX] Add age to prevent immediate self-collision with platform
+                this.age = 0;
             }
 
             update() {
                 if (!this.active) return;
+                this.age++; // Increment age
 
                 if (this.type === 'seeker') {
                     let targets = [];
@@ -648,9 +684,38 @@
                         this.explode(); return; 
                     }
                     
-                    for (let p of platforms) {
-                        if (this.x > p.x && this.x < p.x + p.width && Math.abs(this.y - p.y) < 20) {
-                            this.explode(); return;
+                    // [FIX] Grace period for platform collision (10 frames ~ 0.3s)
+                    if (this.age > 10 || this.ownerType !== 'player') {
+                        for (let p of platforms) {
+                            // Simple hit check for rotated rect is complex, using bounding box approx here
+                            // Better: Check relative to platform angle
+                            // Simplified: Use standard box check but improved
+                            
+                            // Transform projectile to platform local space
+                            const dx = this.x - p.x;
+                            const dy = this.y - p.y;
+                            const rad = -p.angle * (Math.PI / 180);
+                            const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
+                            const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+                            if (localX >= 0 && localX <= p.width && localY >= 0 && localY <= p.height) {
+                                this.explode();
+                                // [NEW] Damage Platform
+                                if (this.ownerType === 'player' && p.type !== 'unbreakable') {
+                                    const dmg = (this.type === 'nuke') ? 100 : 25;
+                                    // Send damage to server
+                                    socket.emit('platformDamage', { id: p.id, damage: dmg });
+                                    
+                                    // Optimistic local update
+                                    p.hp -= dmg;
+                                    if(p.hp <= 0) {
+                                        socket.emit('platformDestroyed', p.id);
+                                        // Locally remove? Wait for server event for consistency or do it now.
+                                        // We'll wait for server event to remove to keep array index consistent.
+                                    }
+                                }
+                                return;
+                            }
                         }
                     }
 
@@ -685,7 +750,8 @@
                 let radius = 80, damage = 20;
                 if (this.type === 'nuke') { radius = 300; damage = 100; }
                 if (this.type === 'laser') { damage = 30; }
-                if (this.type === 'cluster') { radius = 100; damage = 40; } // High damage
+                // [FIX] Reduced cluster bomb damage
+                if (this.type === 'cluster') { radius = 100; damage = 15; } 
                 
                 if (player && player.team !== this.team && !player.dead) {
                      if (dist(this.x, this.y, player.x, player.y) < radius) {
@@ -718,8 +784,8 @@
                 this.name = isLocal ? "YOU" : "ENEMY";
                 this.dead = false;
 				
-                this.ammo = { 'standard': Infinity, 'scatter': 5, 'laser': 3, 'nuke': 0, 'seeker': 3 };
-                if (gameConfig.unlockWeapons) this.ammo = { 'standard': Infinity, 'scatter': 99, 'laser': 99, 'nuke': 99, 'seeker': 99 };
+                this.ammo = { 'standard': Infinity, 'scatter': 5, 'laser': 3, 'nuke': 0, 'seeker': 3, 'builder': Infinity };
+                if (gameConfig.unlockWeapons) this.ammo = { 'standard': Infinity, 'scatter': 99, 'laser': 99, 'nuke': 99, 'seeker': 99, 'builder': Infinity };
                 
                 this.currentWeapon = 'standard';
                 this.onGround = false;
@@ -820,6 +886,8 @@
 
             fire(power) {
                 if (!gameActive) return;
+                if (this.currentWeapon === 'builder') return; // Builder logic handled in mouseup
+
                 const rad = this.turretAngle * (Math.PI / 180);
                 const bx = this.x + Math.cos(rad) * 20;
                 const by = (this.y - 15) + Math.sin(rad) * 20;
@@ -842,7 +910,7 @@
             }
 
             useAmmo() {
-                if (this.currentWeapon !== 'standard') {
+                if (this.currentWeapon !== 'standard' && this.currentWeapon !== 'builder') {
                     this.ammo[this.currentWeapon]--;
                     if (this.ammo[this.currentWeapon] <= 0) this.currentWeapon = 'standard';
                     updateHUD();
@@ -984,22 +1052,63 @@
                 const rect = canvas.getBoundingClientRect();
                 mousePos.x = e.clientX - rect.left;
                 mousePos.y = e.clientY - rect.top;
+                
+                // If drawing
+                if(isDrawing && gameActive) {
+                    // nothing special, draw loop handles visual
+                }
             });
 
             canvas.addEventListener('mousedown', e => {
                 if (e.button === 0 && gameActive && player && !player.dead) { 
-                    isCharging = true; mousePressedTime = Date.now();
+                    if (player.currentWeapon === 'builder') {
+                        isDrawing = true;
+                        const trueWorldX = mousePos.x / camera.zoom + camera.x;
+                        const trueWorldY = mousePos.y / camera.zoom + camera.y;
+                        drawStart = { x: trueWorldX, y: trueWorldY };
+                    } else {
+                        isCharging = true; mousePressedTime = Date.now();
+                    }
                 }
             });
 
             canvas.addEventListener('mouseup', e => {
-                if (e.button === 0 && isCharging && gameActive && player && !player.dead) {
-                    const duration = Date.now() - mousePressedTime;
-                    let pwr = Math.min(duration / 40, 25);
-                    pwr = Math.max(pwr, 2);
-                    player.fire(pwr);
-                    isCharging = false;
-                    document.getElementById('hud-power').style.width = '0%';
+                if (e.button === 0 && gameActive && player && !player.dead) {
+                    if (isDrawing) {
+                        // Finalize Draw
+                        isDrawing = false;
+                        const endX = mousePos.x / camera.zoom + camera.x;
+                        const endY = mousePos.y / camera.zoom + camera.y;
+                        
+                        const dX = endX - drawStart.x;
+                        const dY = endY - drawStart.y;
+                        const width = Math.sqrt(dX*dX + dY*dY);
+                        if (width > 20) {
+                            const angle = Math.atan2(dY, dX) * 180 / Math.PI;
+                            
+                            const newPlat = {
+                                id: `dyn_${Math.random().toString(36).substr(2,9)}`,
+                                x: drawStart.x, 
+                                y: drawStart.y, 
+                                width: width, 
+                                height: 20,
+                                angle: angle,
+                                hp: 200, 
+                                maxHp: 200,
+                                type: 'standard'
+                            };
+                            
+                            // Send to server
+                            socket.emit('createPlatform', newPlat);
+                        }
+                    } else if (isCharging) {
+                        const duration = Date.now() - mousePressedTime;
+                        let pwr = Math.min(duration / 40, 25);
+                        pwr = Math.max(pwr, 2);
+                        player.fire(pwr);
+                        isCharging = false;
+                        document.getElementById('hud-power').style.width = '0%';
+                    }
                 }
             });
 
@@ -1079,6 +1188,9 @@
                 socket.off('clusterBombDropped');
                 socket.off('planeDestroyed');
                 socket.off('grantSuperpower');
+                socket.off('platformCreated');
+                socket.off('platformDestroyed');
+                socket.off('platformDamage');
             }
 
             setupGameListeners();
@@ -1109,6 +1221,11 @@
                 
                 if(data.crates) crates = data.crates.map(c => new Crate(c.id, c.x, c.y, c.type));
 
+                // [FIX] Load Planes from init so they show on map
+                if(data.planes) {
+                    planes = data.planes.map(p => new Plane(p));
+                }
+
                 if(data.players) {
                     for (let pid in data.players) {
                         if(pid !== myId) handlePlayerJoin(data.players[pid]);
@@ -1119,7 +1236,13 @@
                 hpBox.className = 'stat-box'; 
                 hpBox.classList.add(myTeam === 1 ? 'team-1-hud' : 'team-2-hud');
 
-                generateTerrain();
+                generateTerrain(data.destroyedPlatforms || []);
+                
+                // Add dynamic platforms
+                if (data.dynamicPlatforms) {
+                    data.dynamicPlatforms.forEach(p => platforms.push(p));
+                }
+
                 player = new Tank(true, myTeam, myId);
                 player.name = document.getElementById('inp-name').value || "YOU";
                 
@@ -1180,6 +1303,26 @@
             socket.on('crateSpawned', (c) => crates.push(new Crate(c.id, c.x, c.y, c.type)));
             socket.on('crateRemoved', (id) => crates = crates.filter(c => c.id !== id));
             socket.on('hitConfirmed', (data) => { if (data.x) createExplosion(data.x, data.y, 'heal'); });
+
+            // --- PLATFORM EVENTS ---
+            socket.on('platformCreated', (p) => {
+                platforms.push(p);
+            });
+            socket.on('platformDestroyed', (id) => {
+                const p = platforms.find(x => x.id === id);
+                if(p) {
+                    createExplosion(p.x + p.width/2, p.y, 'standard');
+                    platforms = platforms.filter(x => x.id !== id);
+                }
+            });
+            socket.on('platformDamage', (data) => {
+                const p = platforms.find(x => x.id === data.id);
+                if(p) {
+                    p.hp -= data.damage;
+                    // Visual effect?
+                    floatingTexts.push(new FloatingText(p.x, p.y - 10, `-${data.damage}`, '#aaa', 10));
+                }
+            });
 
             // --- NPC PLANES ---
             socket.on('planeSpawned', (p) => {
@@ -1326,14 +1469,16 @@
             document.getElementById('hud-shield').style.width = (player.shield / 50 * 100) + "%"; 
             document.getElementById('hud-lives').innerText = player.lives;
             
-            const weapons = ['standard', 'scatter', 'laser', 'seeker', 'nuke'];
+            const weapons = ['standard', 'scatter', 'laser', 'seeker', 'nuke', 'builder'];
             weapons.forEach(w => {
                 const btn = document.getElementById('btn-'+w);
                 const ammoSpan = document.getElementById('ammo-'+w);
-                let val = player.ammo[w] === Infinity ? '∞' : player.ammo[w];
-                ammoSpan.innerText = val;
-                if (player.currentWeapon === w) btn.classList.add('active');
-                else btn.classList.remove('active');
+                if(btn) { // builder might not exist in old cached view
+                    let val = player.ammo[w] === Infinity ? '∞' : player.ammo[w];
+                    ammoSpan.innerText = val;
+                    if (player.currentWeapon === w) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                }
             });
 
             if(isCharging) {
@@ -1414,8 +1559,28 @@
             
             platforms.forEach(p => {
                 ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle * Math.PI/180);
-                ctx.fillStyle = '#002'; ctx.fillRect(0,0,p.width,20);
-                ctx.strokeStyle = '#0ff'; ctx.strokeRect(0,0,p.width,20);
+                
+                // Different look for breakable vs unbreakable
+                if(p.type === 'unbreakable') {
+                    ctx.fillStyle = '#111'; 
+                    ctx.strokeStyle = '#555';
+                } else {
+                    // Redden as damaged
+                    const dmgPct = p.hp / p.maxHp;
+                    ctx.fillStyle = `rgba(${255 * (1-dmgPct)}, 0, 50, 0.5)`; 
+                    ctx.strokeStyle = '#0ff';
+                }
+                
+                ctx.fillRect(0,0,p.width,p.height);
+                ctx.strokeRect(0,0,p.width,p.height);
+                
+                // Optional: Show HP text if damaged
+                if (p.hp < p.maxHp && p.type !== 'unbreakable') {
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '10px Arial';
+                    ctx.fillText(Math.ceil(p.hp), p.width/2 - 10, p.height/2 + 4);
+                }
+
                 ctx.restore();
             });
 
@@ -1469,6 +1634,32 @@
             ctx.fillRect(camera.x, camera.y, width/camera.zoom, height/camera.zoom);
 
             drawTerrain(ctx);
+            
+            // Draw builder preview
+            if (isDrawing && gameActive) {
+                const trueX = mousePos.x / camera.zoom + camera.x;
+                const trueY = mousePos.y / camera.zoom + camera.y;
+                
+                ctx.strokeStyle = '#f0f';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(drawStart.x, drawStart.y);
+                ctx.lineTo(trueX, trueY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw rect preview (approx)
+                ctx.save();
+                const dx = trueX - drawStart.x;
+                const dy = trueY - drawStart.y;
+                const angle = Math.atan2(dy, dx);
+                const len = Math.sqrt(dx*dx + dy*dy);
+                ctx.translate(drawStart.x, drawStart.y);
+                ctx.rotate(angle);
+                ctx.strokeRect(0, 0, len, 20);
+                ctx.restore();
+            }
 
             crates.forEach(c => c.draw(ctx));
 
@@ -1480,7 +1671,7 @@
             particles.forEach(p => p.draw(ctx));
             floatingTexts.forEach(t => t.draw(ctx));
 
-            if (isCharging && player && gameActive) drawTrajectory(ctx, player);
+            if (isCharging && player && gameActive && !isDrawing) drawTrajectory(ctx, player);
 
             ctx.restore();
             if(gameActive) drawMinimap();
@@ -1497,10 +1688,12 @@
             minimapCtx.stroke();
 
             // Draw Platforms on Minimap
-            minimapCtx.strokeStyle = '#aaa';
             minimapCtx.lineWidth = 2;
             minimapCtx.beginPath();
             platforms.forEach(p => {
+                 if(p.type === 'unbreakable') minimapCtx.strokeStyle = '#555';
+                 else minimapCtx.strokeStyle = '#aaa';
+                 
                  // Simple approximate line for platforms
                  minimapCtx.moveTo(p.x * scaleX, p.y * scaleY);
                  minimapCtx.lineTo((p.x + p.width) * scaleX, (p.y + (p.width * Math.tan(p.angle * Math.PI/180))) * scaleY);
@@ -1519,7 +1712,7 @@
                 }
             });
 
-            // Draw Planes
+            // Draw Planes [FIX: Ensure they are drawn]
             minimapCtx.fillStyle = '#fff';
             planes.forEach(p => {
                  minimapCtx.fillRect(p.x * scaleX, p.y * scaleY, 5, 3);

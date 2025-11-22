@@ -42,6 +42,8 @@ io.on('connection', (socket) => {
                 players: {},
                 crates: [],
                 planes: [], // Store active NPC planes
+                dynamicPlatforms: [], // User drawn platforms
+                destroyedPlatforms: [], // IDs of destroyed static platforms
                 seed: Math.random(),
                 lastCrate: Date.now()
             };
@@ -73,6 +75,9 @@ io.on('connection', (socket) => {
             gameStatus: game.status,
             seed: game.seed,
             crates: game.crates,
+            planes: game.planes, // [FIX] Send existing planes so they appear on minimap
+            dynamicPlatforms: game.dynamicPlatforms, // [NEW] Send user-drawn platforms
+            destroyedPlatforms: game.destroyedPlatforms, // [NEW] Sync destruction
             players: game.players 
         });
 
@@ -91,6 +96,7 @@ io.on('connection', (socket) => {
         const blues = Object.values(game.players).filter(p => p.team === 1).length;
         const reds = Object.values(game.players).filter(p => p.team === 2).length;
 
+        // Allow single player testing if needed, or keep strict
         if (blues > 0 && reds > 0) {
             game.status = 'playing';
             io.to(room).emit('gameStarted');
@@ -122,6 +128,38 @@ io.on('connection', (socket) => {
         if(room) socket.broadcast.to(room).emit('hitConfirmed', data); 
     });
 
+    // --- PLATFORM LOGIC [NEW] ---
+    socket.on('createPlatform', (platData) => {
+        const room = socket.data.room;
+        if (room && games[room]) {
+            games[room].dynamicPlatforms.push(platData);
+            io.to(room).emit('platformCreated', platData);
+        }
+    });
+
+    socket.on('platformDestroyed', (id) => {
+        const room = socket.data.room;
+        if (room && games[room]) {
+            // If it's a static platform (string ID), add to destroyed list
+            // If it's dynamic, we could remove it from array, but identifying by index is tricky
+            // simplified: Just broadcast destruction
+            if (typeof id === 'string' && id.startsWith('static')) {
+                if (!games[room].destroyedPlatforms.includes(id)) {
+                    games[room].destroyedPlatforms.push(id);
+                }
+            } else {
+                // Remove dynamic platform
+                games[room].dynamicPlatforms = games[room].dynamicPlatforms.filter(p => p.id !== id);
+            }
+            io.to(room).emit('platformDestroyed', id);
+        }
+    });
+
+    socket.on('platformDamage', (data) => {
+        const room = socket.data.room;
+        if(room) socket.broadcast.to(room).emit('platformDamage', data);
+    });
+
     // --- NPC PLANE HIT ---
     socket.on('planeHit', (data) => {
         const room = socket.data.room;
@@ -136,8 +174,6 @@ io.on('connection', (socket) => {
                         player.hp = 200; // Super HP
                         player.maxHp = 200;
                         player.lives += 1;
-                        // Tell client to grant weapons locally or sync via state?
-                        // We'll send a specific reward event
                         io.to(room).emit('planeDestroyed', { 
                             planeId: plane.id, 
                             killerId: socket.id,

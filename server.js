@@ -1,96 +1,120 @@
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
+
+// 1. Initialize Express and HTTP Server
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: { origin: "*" } // Allow connections from any origin
+});
+
+// 2. Serve Static Files (HTML, CSS, JS)
+// This tells the server to look for files in the current directory
+app.use(express.static(__dirname));
+
+// Serve the main game file when visiting the root URL
+app.get('/', (req, res) => {
+    // Checks for game2-online.html. If you renamed it to index.html, update this line!
+    const gameFile = path.join(__dirname, 'game2-online.html');
+    res.sendFile(gameFile, (err) => {
+        if (err) {
+            // Fallback if the specific file isn't found, tries index.html
+            res.sendFile(path.join(__dirname, 'index.html'));
+        }
+    });
+});
+
+// 3. Game State
+let players = {};
+let crates = [];
+let seed = Math.random();
+
+// Crate Spawning Loop (Every 10 seconds)
+setInterval(() => {
+    if (crates.length < 5) {
+        const id = Math.random().toString(36).substr(2, 9);
+        const type = ['repair', 'ammo', 'shield', 'scatter', 'seeker', 'nuke'][Math.floor(Math.random() * 6)];
+        const x = Math.floor(Math.random() * 5800) + 100; // Random position within map bounds
+        const crate = { id, x, y: -100, type };
+        crates.push(crate);
+        io.emit('crateSpawned', crate);
+    }
+}, 10000);
+
+// 4. Socket.io Event Handling
+io.on('connection', (socket) => {
+    console.log('User connected:', socket.id);
+
+    // Handle new player joining
+    socket.on('joinGame', (data) => {
+        // Assign team: 1 (Blue) or 2 (Red)
+        const team = Object.keys(players).length % 2 === 0 ? 1 : 2;
+
+        players[socket.id] = {
+            id: socket.id,
+            name: data.name || `Player ${socket.id.substr(0,4)}`,
+            team: team,
+            x: team === 1 ? 200 : 5800, // Spawn points
+            y: 0,
+            hp: 100,
+            shield: 0,
+            angle: 0,
+            turretAngle: 0
+        };
+
+        // Send init data to the new player
+        socket.emit('init', {
+            id: socket.id,
+            team: team,
+            seed: seed,
+            crates: crates
+        });
+
+        // Notify everyone else
+        socket.broadcast.emit('playerJoined', players[socket.id]);
+    });
+
+    // Receive movement/state updates from client
+    socket.on('updateState', (state) => {
+        if (players[socket.id]) {
+            // Update our server-side record of the player
+            Object.assign(players[socket.id], state);
+        }
+    });
+
+    // Relay firing events
+    socket.on('fire', (data) => {
+        // Add the shooter's ID so clients know who fired
+        data.id = socket.id;
+        socket.broadcast.emit('playerFired', data);
+    });
+
+    // Handle crate collection
+    socket.on('crateCollected', (id) => {
+        // Remove crate and notify all clients
+        crates = crates.filter(c => c.id !== id);
+        io.emit('crateRemoved', id);
+    });
+
+    // Cleanup on disconnect
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
+        delete players[socket.id];
+        io.emit('playerLeft', socket.id);
+    });
+});
+
+// 5. Game Loop (Broadcast State)
+// Sends all player positions to all clients 30 times a second
+setInterval(() => {
+    io.emit('stateUpdate', players);
+}, 1000 / 30);
+
+// 6. Start the Server
+// Render gives us a port in process.env.PORT. We must use it.
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
-
-let players = {};
-let crates = []; // { id, x, y, type }
-let crateIdCounter = 0;
-let playerCount = 0;
-const SEED = Math.floor(Math.random() * 10000);
-
-// Crate Configuration
-const CRATE_TYPES = ['repair', 'ammo', 'shield', 'scatter', 'seeker', 'nuke'];
-const SPAWN_INTERVAL = 5000; // Spawn a crate every 5 seconds
-const MAX_CRATES = 10;
-
-io.on("connection", (socket) => {
-  console.log("New Tank Connected: " + socket.id);
-  playerCount++;
-  
-  // Auto-assign team (1 or 2)
-  const team = playerCount % 2 === 0 ? 2 : 1;
-  
-  players[socket.id] = {
-    x: team === 1 ? 200 : 5000,
-    y: 0,
-    angle: 0,
-    turretAngle: 0,
-    hp: 100,
-    maxHp: 100,
-    shield: 0, // Added Shield property
-    team: team,
-    name: "Tank " + playerCount
-  };
-
-  // Send initial data to the joining player
-  socket.emit("init", { 
-    id: socket.id, 
-    team: team, 
-    seed: SEED,
-    crates: crates // Send existing crates
-  });
-  
-  // Notify others
-  socket.broadcast.emit("playerJoined", { id: socket.id, ...players[socket.id] });
-  
-  // Send existing players to the new joiner
-  socket.emit("stateUpdate", players);
-
-  socket.on("updateState", (data) => {
-    if (players[socket.id]) {
-      players[socket.id] = { ...players[socket.id], ...data };
-    }
-  });
-
-  socket.on("fire", (data) => {
-    data.id = socket.id;
-    socket.broadcast.emit("playerFired", data);
-  });
-
-  socket.on("crateCollected", (crateId) => {
-      // Verify crate exists to prevent double collection
-      const index = crates.findIndex(c => c.id === crateId);
-      if (index !== -1) {
-          crates.splice(index, 1);
-          io.emit("crateRemoved", crateId); // Tell everyone to remove it
-      }
-  });
-
-  // Loop to sync all players to all clients 20 times a second
-  setInterval(() => {
-    io.emit("stateUpdate", players);
-  }, 50);
-
-  socket.on("disconnect", () => {
-    delete players[socket.id];
-    io.emit("playerLeft", socket.id);
-    console.log("Tank Disconnected");
-  });
-});
-
-// Server-side Crate Spawner
-setInterval(() => {
-    if (crates.length < MAX_CRATES && playerCount > 0) {
-        const newCrate = {
-            id: crateIdCounter++,
-            x: Math.random() * 6000 + 200, // Random X within map bounds
-            y: -100, // Start in sky
-            type: CRATE_TYPES[Math.floor(Math.random() * CRATE_TYPES.length)]
-        };
-        crates.push(newCrate);
-        io.emit("crateSpawned", newCrate);
-    }
-}, SPAWN_INTERVAL);
-
-console.log("Artillery Blitz Server running on port 3000");

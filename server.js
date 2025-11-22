@@ -14,18 +14,11 @@ const io = new Server(server, {
 // This tells the server to look for files in the current directory
 app.use(express.static(__dirname));
 
+
 // Serve the main game file when visiting the root URL
 app.get('/', (req, res) => {
-    // Checks for game2-online.html. If you renamed it to index.html, update this line!
-    const gameFile = path.join(__dirname, 'game2-online.html');
-    res.sendFile(gameFile, (err) => {
-        if (err) {
-            // Fallback if the specific file isn't found, tries index.html
-            res.sendFile(path.join(__dirname, 'index.html'));
-        }
-    });
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
-
 // 3. Game State
 let players = {};
 let crates = [];

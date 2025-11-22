@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Artillery Blitz 4.0: [ONLINE WARFARE]</title>
+    <title>Artillery Blitz 5.0: [SUPERCHARGE]</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
@@ -332,7 +332,8 @@
         let myTeam = 1; 
         let isHost = false;
         let remotePlayers = {}; 
-        let crates = []; 
+        let crates = [];
+        let planes = []; // NPC Planes
 
         /**
          * ENGINE CORE
@@ -347,8 +348,6 @@
         const JUMP_FORCE = -10;
         const JUMP_SUSTAIN = -0.5; 
         
-        // --- FIX 1: CONSTANT WORLD HEIGHT ---
-        // This ensures terrain generation is identical regardless of window size
         const WORLD_HEIGHT = 1500;
 
         let width, height;
@@ -406,8 +405,6 @@
             const amplitude = 150;
             
             for (let x = 0; x <= TERRAIN_WIDTH; x += SEGMENT_SIZE) {
-                // --- FIX 1 APPLIED HERE ---
-                // Use WORLD_HEIGHT instead of canvas height
                 let y = WORLD_HEIGHT * 0.8; 
                 y += Math.sin(x * 0.002) * amplitude;
                 y += Math.sin(x * 0.01) * (amplitude * 0.3 * jaggedness);
@@ -441,6 +438,60 @@
         /**
          * GAME CLASSES
          */
+        class FloatingText {
+            constructor(x, y, text, color, size) {
+                this.x = x; this.y = y; 
+                this.text = text; this.color = color;
+                this.life = 1.0;
+                this.size = size || 14;
+            }
+            update() {
+                this.y -= 1;
+                this.life -= 0.02;
+            }
+            draw(ctx) {
+                if(this.life <= 0) return;
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.font = `bold ${this.size}px Orbitron`;
+                ctx.textAlign = 'center';
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        class Plane {
+            constructor(data) {
+                this.id = data.id;
+                this.x = data.x; this.y = data.y;
+                this.vx = data.vx;
+                this.direction = data.direction;
+                this.active = true;
+            }
+            update() {
+                this.x += this.vx; // Move using server velocity
+                // Simple visual bobbing
+                this.y += Math.sin(Date.now() * 0.01) * 0.5;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.direction, 1);
+                ctx.fillStyle = '#aaa';
+                // Simple Plane Shape
+                ctx.beginPath();
+                ctx.moveTo(20, 0); ctx.lineTo(-20, 0);
+                ctx.lineTo(-25, -10); ctx.lineTo(-10, -5); 
+                ctx.lineTo(10, -5); ctx.lineTo(5, 5); ctx.lineTo(-10, 5);
+                ctx.fill();
+                ctx.fillStyle = '#f00'; // Light
+                ctx.beginPath(); ctx.arc(20, 0, 2, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+                
+                // Draw Health? Maybe not needed for NPC unless hit
+            }
+        }
+
         class Particle {
             constructor(x, y, color, type) {
                 this.x = x; this.y = y;
@@ -581,6 +632,18 @@
                     this.x += stepVx;
                     this.y += stepVy;
 
+                    // Plane Collision (Local Player Only checks)
+                    if (this.ownerType === 'player') {
+                        for(let plane of planes) {
+                            if (dist(this.x, this.y, plane.x, plane.y) < 30) {
+                                this.explode();
+                                socket.emit('planeHit', { planeId: plane.id, damage: 10 });
+                                createExplosion(this.x, this.y, 'standard');
+                                return;
+                            }
+                        }
+                    }
+
                     if (this.y >= getTerrainHeight(this.x)) { 
                         this.explode(); return; 
                     }
@@ -608,6 +671,7 @@
                 for (let t of this.trail) ctx.lineTo(t.x, t.y);
                 ctx.strokeStyle = this.team === 1 ? '#0ff' : '#f00';
                 if (this.type === 'nuke') ctx.strokeStyle = '#ff0';
+                if (this.type === 'cluster') ctx.strokeStyle = '#f60';
                 ctx.lineWidth = 2; ctx.stroke();
                 ctx.fillStyle = '#fff';
                 ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fill();
@@ -621,6 +685,7 @@
                 let radius = 80, damage = 20;
                 if (this.type === 'nuke') { radius = 300; damage = 100; }
                 if (this.type === 'laser') { damage = 30; }
+                if (this.type === 'cluster') { radius = 100; damage = 40; } // High damage
                 
                 if (player && player.team !== this.team && !player.dead) {
                      if (dist(this.x, this.y, player.x, player.y) < radius) {
@@ -659,6 +724,7 @@
                 this.currentWeapon = 'standard';
                 this.onGround = false;
                 this.groundStartHeight = 0;
+                this.hitFlashTimer = 0;
             }
 
             update() {
@@ -722,6 +788,7 @@
                 this.onGround = false;
                 const floorY = getTerrainHeight(this.x);
                 
+                // Terrain Collision
                 if (this.y >= floorY - 10) {
                     this.y = floorY - 10; this.vy = 0; this.onGround = true;
                     this.groundStartHeight = this.y;
@@ -730,12 +797,23 @@
                     this.angle = Math.atan2(h2 - h1, 20);
                 }
                 
+                // Platform Collision (Improved for Angled Platforms)
                 platforms.forEach(p => {
-                    if (this.x > p.x && this.x < p.x + p.width && 
-                        this.y > p.y - 25 && this.y < p.y + 10 && this.vy >= 0) {
-                        this.y = p.y - 10; this.vy = 0; this.onGround = true;
-                        this.groundStartHeight = this.y;
-                        this.angle = p.angle * Math.PI/180;
+                    const rad = p.angle * (Math.PI / 180);
+                    // Determine where tank is relative to platform start
+                    const relX = this.x - p.x;
+                    // Calculate exact platform height at this X using trigonometry
+                    const platYAtX = p.y + (relX * Math.tan(rad));
+
+                    if (this.x > p.x && this.x < p.x + p.width && this.vy >= 0) {
+                        // Check if we are close to the platform surface (with some tolerance)
+                        if (this.y > platYAtX - 25 && this.y < platYAtX + 10) {
+                            this.y = platYAtX - 10; // Adjust for tank height
+                            this.vy = 0;
+                            this.onGround = true;
+                            this.groundStartHeight = this.y;
+                            this.angle = rad; // Match platform angle
+                        }
                     }
                 });
             }
@@ -774,6 +852,13 @@
             takeDamage(amount) {
                 if (this.dead || !gameActive) return;
 
+                // Spawn Damage Text
+                const size = 10 + (amount / 2); // Bigger damage = Bigger Text
+                floatingTexts.push(new FloatingText(this.x, this.y - 30, "-" + Math.ceil(amount), '#f00', size));
+                
+                // Trigger Flash
+                this.hitFlashTimer = 10; // Flash for 10 frames
+
                 if (this.shield > 0) {
                     this.shield -= amount;
                     if (this.shield < 0) {
@@ -811,6 +896,14 @@
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.angle);
 
+                // Hit Flash Effect
+                if (this.hitFlashTimer > 0) {
+                    this.hitFlashTimer--;
+                    if (Math.floor(Date.now() / 50) % 2 === 0) {
+                        ctx.globalCompositeOperation = 'lighter'; // Make it bright
+                    }
+                }
+
                 const color = this.team === 1 ? '#0ff' : '#f00';
 
                 ctx.shadowBlur = 15;
@@ -829,6 +922,7 @@
                     ctx.arc(0, -7, 25, 0, Math.PI*2); ctx.stroke();
                 }
 
+                // Show Name for everyone
                 if (!this.isLocal) {
                     ctx.shadowBlur = 0;
                     ctx.fillStyle = color;
@@ -847,12 +941,20 @@
                 ctx.fillRect(0, -3, 30, 6);
                 ctx.restore();
 
-                if (!this.isLocal) {
-                    ctx.fillStyle = '#f00'; ctx.fillRect(this.x - 20, this.y - 50, 40, 4);
-                    ctx.fillStyle = '#0f0'; ctx.fillRect(this.x - 20, this.y - 50, 40 * (this.hp / this.maxHp), 4);
-                    if(this.shield > 0) {
-                         ctx.fillStyle = '#ff0'; ctx.fillRect(this.x - 20, this.y - 56, 40 * (this.shield / 50), 2);
-                    }
+                // Draw Health Bar for ALL tanks (including local)
+                ctx.fillStyle = '#f00'; ctx.fillRect(this.x - 20, this.y - 50, 40, 4);
+                // Clamp draw width to 100% even if hp > maxHp logic visually
+                const drawHp = Math.min(this.hp, this.maxHp); 
+                const hpPct = drawHp / this.maxHp; 
+                ctx.fillStyle = '#0f0'; ctx.fillRect(this.x - 20, this.y - 50, 40 * hpPct, 4);
+                
+                // Show Super Health (Cyan overlay)
+                if (this.hp > this.maxHp) {
+                    ctx.fillStyle = '#0ff'; ctx.fillRect(this.x - 20, this.y - 50, 40, 4); 
+                }
+
+                if(this.shield > 0) {
+                     ctx.fillStyle = '#ff0'; ctx.fillRect(this.x - 20, this.y - 56, 40 * (this.shield / 50), 2);
                 }
             }
         }
@@ -863,6 +965,7 @@
         let player;
         let projectiles = [];
         let particles = [];
+        let floatingTexts = [];
         
         /**
          * INITIALIZATION
@@ -971,6 +1074,11 @@
                 socket.off('playerDied');
                 socket.off('playerRespawn');
                 socket.off('gameOver');
+                // Clean old listeners
+                socket.off('planeSpawned');
+                socket.off('clusterBombDropped');
+                socket.off('planeDestroyed');
+                socket.off('grantSuperpower');
             }
 
             setupGameListeners();
@@ -1052,9 +1160,13 @@
                         p.targetX = s.x; p.targetY = s.y;
                         p.turretAngle = s.turretAngle;
                         p.hp = s.hp; p.shield = s.shield || 0;
+                        p.maxHp = s.maxHp || 100;
                         p.angle = s.angle;
                         p.lives = s.lives;
                         p.dead = s.dead;
+                    } else {
+                        // Sync MaxHP if changed (superpower)
+                         if (serverPlayers[id].maxHp > player.maxHp) player.maxHp = serverPlayers[id].maxHp;
                     }
                 }
             });
@@ -1068,6 +1180,38 @@
             socket.on('crateSpawned', (c) => crates.push(new Crate(c.id, c.x, c.y, c.type)));
             socket.on('crateRemoved', (id) => crates = crates.filter(c => c.id !== id));
             socket.on('hitConfirmed', (data) => { if (data.x) createExplosion(data.x, data.y, 'heal'); });
+
+            // --- NPC PLANES ---
+            socket.on('planeSpawned', (p) => {
+                planes.push(new Plane(p));
+                log("WARNING: HOSTILE AIRCRAFT DETECTED");
+            });
+
+            socket.on('clusterBombDropped', (data) => {
+                // Spawn cluster bombs
+                for(let i = 0; i < 5; i++) {
+                    const angle = 90 + fxRand(-20, 20);
+                    const power = fxRand(5, 15);
+                    const p = new Projectile(data.x, data.y, angle, power, 'enemy', 'cluster', 0); // 0 = Neutral/Enemy team
+                    projectiles.push(p);
+                }
+            });
+
+            socket.on('planeDestroyed', (data) => {
+                planes = planes.filter(p => p.id !== data.planeId);
+                createExplosion(data.x, data.y, 'nuke');
+                log("AIRCRAFT DESTROYED!");
+            });
+
+            socket.on('grantSuperpower', () => {
+                log("SUPERPOWER ACTIVATED: ARMOR BOOST + NUKES!");
+                player.hp = 200; 
+                player.maxHp = 200;
+                player.lives += 1;
+                player.ammo['nuke'] += 10;
+                player.ammo['laser'] = 99;
+                updateHUD();
+            });
 
             // --- DEATH & RESPAWN ---
             socket.on('playerDied', (data) => {
@@ -1091,6 +1235,7 @@
                  if (data.id === myId) {
                      player.dead = false;
                      player.hp = 100;
+                     player.maxHp = 100;
                      player.x = data.x;
                      player.y = data.y;
                      player.vx = 0; player.vy = 0;
@@ -1129,6 +1274,7 @@
             const t = new Tank(false, data.team, data.id);
             t.name = data.name;
             t.lives = data.lives;
+            t.maxHp = data.maxHp || 100;
             remotePlayers[data.id] = t;
             updateScoreboard();
         }
@@ -1289,6 +1435,9 @@
                 projectiles.forEach(p => p.update());
                 particles.forEach(p => p.update());
                 crates.forEach(c => c.update());
+                planes.forEach(p => p.update());
+                floatingTexts.forEach(t => t.update());
+                floatingTexts = floatingTexts.filter(t => t.life > 0);
 
                 // Camera Logic
                 let targetCamX = player.x - (width / 2 / camera.zoom);
@@ -1326,8 +1475,10 @@
             if (player && gameActive) player.draw(ctx);
             
             Object.values(remotePlayers).forEach(p => p.draw(ctx));
+            planes.forEach(p => p.draw(ctx)); // Draw Planes
             projectiles.forEach(p => p.draw(ctx));
             particles.forEach(p => p.draw(ctx));
+            floatingTexts.forEach(t => t.draw(ctx));
 
             if (isCharging && player && gameActive) drawTrajectory(ctx, player);
 
@@ -1338,12 +1489,22 @@
         function drawMinimap() {
             minimapCtx.fillStyle = '#000'; minimapCtx.fillRect(0, 0, 300, 180);
             const scaleX = 300 / TERRAIN_WIDTH;
-            // --- FIX 1b: MINIMAP SCALING ---
             const scaleY = 180 / WORLD_HEIGHT; 
             
             minimapCtx.strokeStyle = '#055';
             minimapCtx.beginPath(); minimapCtx.moveTo(0, 180);
             for(let p of terrainPoints) { if (p.x % 100 < 20) minimapCtx.lineTo(p.x * scaleX, p.y * scaleY); }
+            minimapCtx.stroke();
+
+            // Draw Platforms on Minimap
+            minimapCtx.strokeStyle = '#aaa';
+            minimapCtx.lineWidth = 2;
+            minimapCtx.beginPath();
+            platforms.forEach(p => {
+                 // Simple approximate line for platforms
+                 minimapCtx.moveTo(p.x * scaleX, p.y * scaleY);
+                 minimapCtx.lineTo((p.x + p.width) * scaleX, (p.y + (p.width * Math.tan(p.angle * Math.PI/180))) * scaleY);
+            });
             minimapCtx.stroke();
 
             if (player) {
@@ -1356,6 +1517,12 @@
                     minimapCtx.fillStyle = e.team === 1 ? '#0ff' : '#f00';
                     minimapCtx.fillRect(e.x * scaleX, e.y * scaleY, 4, 4);
                 }
+            });
+
+            // Draw Planes
+            minimapCtx.fillStyle = '#fff';
+            planes.forEach(p => {
+                 minimapCtx.fillRect(p.x * scaleX, p.y * scaleY, 5, 3);
             });
 
             minimapCtx.fillStyle = '#0f0';

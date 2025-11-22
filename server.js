@@ -37,11 +37,12 @@ io.on('connection', (socket) => {
 
         if (!games[room]) {
             games[room] = {
-                host: socket.id, // First player is host
+                host: socket.id,
                 status: 'lobby',
                 players: {},
                 crates: [],
-                seed: Math.random(), // Shared seed for terrain
+                planes: [], // Store active NPC planes
+                seed: Math.random(),
                 lastCrate: Date.now()
             };
         }
@@ -56,8 +57,9 @@ io.on('connection', (socket) => {
             x: team == 1 ? 200 : 5800,
             y: -500, // Spawn high
             hp: 100,
+            maxHp: 100, // Track max HP for superpowers
             shield: 0,
-            lives: 5, // 5 Lives
+            lives: 5,
             angle: 0,
             turretAngle: 0,
             dead: false
@@ -84,17 +86,15 @@ io.on('connection', (socket) => {
         if (!room || !games[room]) return;
         const game = games[room];
 
-        // Security: Only host can start
         if (game.host !== socket.id) return;
 
-        // Logic: Needs 1 player per team
         const blues = Object.values(game.players).filter(p => p.team === 1).length;
         const reds = Object.values(game.players).filter(p => p.team === 2).length;
 
         if (blues > 0 && reds > 0) {
             game.status = 'playing';
             io.to(room).emit('gameStarted');
-            io.emit('roomList', getRoomList()); // Update status for outsiders
+            io.emit('roomList', getRoomList());
         } else {
             socket.emit('notification', 'NEED 1 PLAYER PER TEAM TO START');
         }
@@ -103,7 +103,6 @@ io.on('connection', (socket) => {
     socket.on('updateState', (state) => {
         const room = socket.data.room;
         if (room && games[room] && games[room].players[socket.id]) {
-            // Don't update if dead, unless it's a respawn sync
             if (!games[room].players[socket.id].dead) {
                 Object.assign(games[room].players[socket.id], state);
             }
@@ -123,13 +122,44 @@ io.on('connection', (socket) => {
         if(room) socket.broadcast.to(room).emit('hitConfirmed', data); 
     });
 
+    // --- NPC PLANE HIT ---
+    socket.on('planeHit', (data) => {
+        const room = socket.data.room;
+        if (room && games[room]) {
+            const plane = games[room].planes.find(p => p.id === data.planeId);
+            if (plane) {
+                plane.hp -= data.damage;
+                if (plane.hp <= 0) {
+                    // Reward Player
+                    const player = games[room].players[socket.id];
+                    if (player) {
+                        player.hp = 200; // Super HP
+                        player.maxHp = 200;
+                        player.lives += 1;
+                        // Tell client to grant weapons locally or sync via state?
+                        // We'll send a specific reward event
+                        io.to(room).emit('planeDestroyed', { 
+                            planeId: plane.id, 
+                            killerId: socket.id,
+                            x: plane.x, 
+                            y: plane.y 
+                        });
+                        socket.emit('grantSuperpower'); // Specific event for the killer
+                    }
+                    // Remove plane immediately
+                    games[room].planes = games[room].planes.filter(p => p.id !== plane.id);
+                }
+            }
+        }
+    });
+
     // --- HANDLING DEATH & RESPAWN ---
     socket.on('died', () => {
         const room = socket.data.room;
         if (room && games[room] && games[room].players[socket.id]) {
             const p = games[room].players[socket.id];
             
-            if (p.dead) return; // Already handled
+            if (p.dead) return; 
 
             p.lives -= 1;
             p.dead = true;
@@ -138,21 +168,17 @@ io.on('connection', (socket) => {
             io.to(room).emit('playerDied', { id: socket.id, lives: p.lives });
 
             if (p.lives > 0) {
-                // RESPAWN LOGIC
                 setTimeout(() => {
                     if (!games[room] || !games[room].players[socket.id]) return;
-                    
-                    // Respawn at random X, high Y
                     p.dead = false;
                     p.hp = 100;
+                    p.maxHp = 100; // Reset max HP on respawn
                     p.shield = 0;
                     p.x = Math.floor(Math.random() * 5000) + 500;
-                    p.y = -500; // Drop from sky
-                    
+                    p.y = -500; 
                     io.to(room).emit('playerRespawn', p);
-                }, 3000); // 3 Second Respawn Timer
+                }, 3000);
             } else {
-                // CHECK WIN CONDITION
                 checkWinCondition(room);
             }
         }
@@ -192,19 +218,16 @@ io.on('connection', (socket) => {
             delete games[room].players[socket.id];
             io.to(room).emit('playerLeft', socket.id);
             
-            // If host left, assign new host if anyone remains
             if (games[room].host === socket.id) {
                 const remaining = Object.keys(games[room].players);
                 if (remaining.length > 0) {
                     games[room].host = remaining[0];
-                    // Notify the new host (optional, or just let client logic handle permissions)
                 }
             }
 
             if (Object.keys(games[room].players).length === 0) {
                 delete games[room];
             } else {
-                // Check win condition in case the last enemy left
                 if (games[room].status === 'playing') checkWinCondition(room);
             }
             io.emit('roomList', getRoomList());
@@ -212,14 +235,17 @@ io.on('connection', (socket) => {
     });
 });
 
+// --- SERVER LOOP ---
 setInterval(() => {
     const now = Date.now();
     for (const room in games) {
         const game = games[room];
-        // Only sync state and spawn crates if playing
+        
         if (game.status === 'playing') {
+            // Sync Players
             io.to(room).emit('stateUpdate', game.players);
 
+            // Crate Spawning
             if (now - game.lastCrate > 10000 && game.crates.length < 5) {
                 game.lastCrate = now;
                 const id = Math.random().toString(36).substr(2, 9);
@@ -229,6 +255,37 @@ setInterval(() => {
                 game.crates.push(crate);
                 io.to(room).emit('crateSpawned', crate);
             }
+
+            // --- NPC PLANE LOGIC ---
+            // Spawn Plane (1% chance per tick if none exist)
+            if (game.planes.length < 1 && Math.random() < 0.005) {
+                const isLeft = Math.random() > 0.5;
+                const plane = {
+                    id: Math.random().toString(36).substr(2, 9),
+                    x: isLeft ? -200 : 6200,
+                    y: Math.random() * 200 + 100, // High altitude
+                    vx: isLeft ? 5 : -5,
+                    hp: 50,
+                    direction: isLeft ? 1 : -1
+                };
+                game.planes.push(plane);
+                io.to(room).emit('planeSpawned', plane);
+            }
+
+            // Update Planes
+            game.planes.forEach((p, index) => {
+                p.x += p.vx;
+                
+                // Bombing Run (random drop)
+                if (Math.random() < 0.02 && p.x > 200 && p.x < 5800) {
+                    io.to(room).emit('clusterBombDropped', { x: p.x, y: p.y });
+                }
+
+                // Despawn if out of bounds
+                if (p.x < -1000 || p.x > 7000) {
+                    game.planes.splice(index, 1);
+                }
+            });
         }
     }
 }, 1000 / 30);

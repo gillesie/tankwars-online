@@ -900,6 +900,9 @@ function initGame(mode) {
     // Show Lobby instead of connecting immediately
     document.getElementById('mp-lobby-screen').classList.remove('hidden');
     
+    // Force Default Team Selection (Blue)
+    setTeam(1);
+
     // Connect socket to get room list
     connectSocket();
 }
@@ -932,14 +935,23 @@ function connectSocket() {
             container.appendChild(div);
         });
     });
-
-    // Move other socket listeners here if needed or keep in joinGame
 }
 
 function joinGame() {
     const name = document.getElementById('inp-name').value || "Unknown";
     const room = document.getElementById('inp-room').value || "Global";
     
+    // Ensure listeners are clean before adding new ones
+    if (socket) {
+        socket.off('init');
+        socket.off('playerJoined');
+        socket.off('playerLeft');
+        socket.off('stateUpdate');
+        socket.off('playerFired');
+        socket.off('crateSpawned');
+        socket.off('crateRemoved');
+    }
+
     // 1. SETUP LISTENERS FIRST so we don't miss the 'init' event
     setupGameListeners();
 
@@ -1042,7 +1054,9 @@ function handlePlayerJoin(data) {
 }
 
 function updateScoreboard() {
-    const blueList = document.getElementById('sb-list-1');
+    // Safety check: if player isn't initialized yet, abort
+    if (!player) return;
+	const blueList = document.getElementById('sb-list-1');
     const redList = document.getElementById('sb-list-2');
     blueList.innerHTML = ''; redList.innerHTML = '';
 

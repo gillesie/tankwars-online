@@ -63,7 +63,7 @@ io.on('connection', (socket) => {
             turretAngle: 0
         };
 
-        // Send Init Data
+        // Send Init Data (Only to the joiner)
         socket.emit('init', {
             id: socket.id,
             team: team,
@@ -72,8 +72,8 @@ io.on('connection', (socket) => {
             players: game.players // Send current players for the scoreboard
         });
 
-        // Notify room
-        io.to(room).emit('playerJoined', game.players[socket.id]);
+        // Notify others in the room (Broadcast prevents sender from getting this)
+        socket.broadcast.to(room).emit('playerJoined', game.players[socket.id]);
         
         // Update Lobby for everyone not in a game
         io.emit('roomList', getRoomList());
@@ -96,7 +96,7 @@ io.on('connection', (socket) => {
 
     socket.on('hit', (data) => {
         const room = socket.data.room;
-        if(room) socket.broadcast.to(room).emit('hitConfirmed', data); // Optional: confirm hits
+        if(room) socket.broadcast.to(room).emit('hitConfirmed', data); 
     });
 
     socket.on('crateCollected', (id) => {

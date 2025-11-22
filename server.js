@@ -11,7 +11,6 @@ app.use(express.static(__dirname));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 // --- GAME STATE MANAGEMENT ---
-// Structure: { "roomName": { players: {}, crates: [], seed: 123, lastCrate: timestamp } }
 const games = {};
 
 function getRoomList() {
@@ -29,16 +28,12 @@ function getRoomList() {
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
-    
-    // Send available rooms to the user immediately
     socket.emit('roomList', getRoomList());
 
     socket.on('createOrJoin', ({ room, name, team }) => {
-        // Join Socket.io Room
         socket.join(room);
-        socket.data.room = room; // Store room on socket session
+        socket.data.room = room;
 
-        // Initialize Game Instance if it doesn't exist
         if (!games[room]) {
             games[room] = {
                 players: {},
@@ -50,32 +45,29 @@ io.on('connection', (socket) => {
         
         const game = games[room];
 
-        // Add Player
+        // Reset or Add Player
         game.players[socket.id] = {
             id: socket.id,
             name: name || `Trooper ${socket.id.substr(0,3)}`,
-            team: parseInt(team), // 1 or 2
+            team: parseInt(team),
             x: team == 1 ? 200 : 5800,
             y: 0,
             hp: 100,
             shield: 0,
             angle: 0,
-            turretAngle: 0
+            turretAngle: 0,
+            dead: false
         };
 
-        // Send Init Data (Only to the joiner)
         socket.emit('init', {
             id: socket.id,
             team: team,
             seed: game.seed,
             crates: game.crates,
-            players: game.players // Send current players for the scoreboard
+            players: game.players 
         });
 
-        // Notify others in the room (Broadcast prevents sender from getting this)
         socket.broadcast.to(room).emit('playerJoined', game.players[socket.id]);
-        
-        // Update Lobby for everyone not in a game
         io.emit('roomList', getRoomList());
     });
 
@@ -94,9 +86,20 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- FIX: Handle Hits and Death Explicitly ---
     socket.on('hit', (data) => {
         const room = socket.data.room;
+        // Broadcast hit to everyone so they see the explosion/impact
         if(room) socket.broadcast.to(room).emit('hitConfirmed', data); 
+    });
+
+    socket.on('died', () => {
+        const room = socket.data.room;
+        if (room && games[room] && games[room].players[socket.id]) {
+            games[room].players[socket.id].hp = 0;
+            games[room].players[socket.id].dead = true;
+            socket.broadcast.to(room).emit('playerDied', socket.id);
+        }
     });
 
     socket.on('crateCollected', (id) => {
@@ -112,35 +115,24 @@ io.on('connection', (socket) => {
         if (room && games[room]) {
             delete games[room].players[socket.id];
             io.to(room).emit('playerLeft', socket.id);
-            
-            // Clean up empty rooms
-            if (Object.keys(games[room].players).length === 0) {
-                delete games[room];
-            }
-            
+            if (Object.keys(games[room].players).length === 0) delete games[room];
             io.emit('roomList', getRoomList());
         }
     });
 });
 
-// --- GLOBAL TICKER (Per Room) ---
 setInterval(() => {
     const now = Date.now();
-    
     for (const room in games) {
         const game = games[room];
-        
-        // 1. Broadcast State
         io.to(room).emit('stateUpdate', game.players);
 
-        // 2. Spawn Crates Logic (Per room)
         if (now - game.lastCrate > 10000 && game.crates.length < 5) {
             game.lastCrate = now;
             const id = Math.random().toString(36).substr(2, 9);
             const type = ['repair', 'ammo', 'shield', 'scatter', 'seeker', 'nuke'][Math.floor(Math.random() * 6)];
             const x = Math.floor(Math.random() * 5800) + 100;
             const crate = { id, x, y: -100, type };
-            
             game.crates.push(crate);
             io.to(room).emit('crateSpawned', crate);
         }

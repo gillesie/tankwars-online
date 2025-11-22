@@ -189,7 +189,7 @@
 
 /* NEW SCOREBOARD (Top Right) */
 #scoreboard {
-    position: absolute; top: 80px; right: 20px; 
+    position: absolute; top: 160px; right: 20px; /* CHANGED FROM 80px TO 160px */
     width: 200px; background: rgba(0,0,0,0.7); 
     border: 1px solid #0ff; padding: 10px; 
     pointer-events: none; display: none;
@@ -522,8 +522,8 @@
                 const rad = angle * (Math.PI / 180);
                 this.vx = Math.cos(rad) * power;
                 this.vy = Math.sin(rad) * power;
-                this.ownerType = ownerType; // 'player' or 'enemy'
-                this.team = team; // 1 or 2
+                this.ownerType = ownerType;
+                this.team = team;
                 this.type = type;
                 this.active = true;
                 this.trail = [];
@@ -533,14 +533,14 @@
             }
 
             update() {
+                if (!this.active) return;
+
                 // Seeker Logic
-                if (this.type === 'seeker' && this.active) {
+                if (this.type === 'seeker') {
                     let targets = [];
-                    // If I am blue (1), I target red (2).
-                    if (player && player.team !== this.team) targets.push(player);
-                    
+                    if (player && player.team !== this.team && !player.dead) targets.push(player);
                     Object.values(remotePlayers).forEach(p => {
-                         if(p.team !== this.team) targets.push(p);
+                         if(p.team !== this.team && !p.dead) targets.push(p);
                     });
 
                     let nearest = null; let minDist = 2000;
@@ -565,32 +565,50 @@
                 }
 
                 if (this.type !== 'seeker') this.vx += wind;
-                this.x += this.vx; this.y += this.vy;
+
+                // --- PHYSICS FIX: SUB-STEPPING ---
+                // Perform movement in small steps to prevent tunneling through ground
+                const speed = Math.sqrt(this.vx**2 + this.vy**2);
+                const steps = Math.ceil(speed / 5) + 1; // Ensure at least 1 step, more if fast
+                const stepVx = this.vx / steps;
+                const stepVy = this.vy / steps;
+
+                for(let i = 0; i < steps; i++) {
+                    this.x += stepVx;
+                    this.y += stepVy;
+
+                    // Ground Collision
+                    if (this.y >= getTerrainHeight(this.x)) { 
+                        this.explode(); 
+                        return; 
+                    }
+                    
+                    // Platform Collision
+                    for (let p of platforms) {
+                        if (this.x > p.x && this.x < p.x + p.width && Math.abs(this.y - p.y) < 20) {
+                            this.explode();
+                            return;
+                        }
+                    }
+
+                    // Entity Collision (Hitbox)
+                    if (player && player.team !== this.team && !player.dead) {
+                        if (dist(this.x, this.y, player.x, player.y) < 30) {
+                            this.explode();
+                            return;
+                        }
+                    }
+                }
+
                 this.trail.push({x: this.x, y: this.y});
                 if (this.trail.length > 10) this.trail.shift();
-
-                // Ground Collision
-                if (this.y >= getTerrainHeight(this.x)) { this.explode(); return; }
-                
-                // Platform Collision
-                platforms.forEach(p => {
-                    if (this.x > p.x && this.x < p.x + p.width && Math.abs(this.y - p.y) < 20) this.explode();
-                });
-
-                // Entity Collision
-                // In MP, we mostly rely on local visualization. 
-                // Damage is authoritative from the shooter usually, 
-                // but here we let the VICTIM calculate damage to avoid lag hits.
-                if (player && player.team !== this.team) {
-                    if (dist(this.x, this.y, player.x, player.y) < 30) this.explode();
-                }
             }
 
             draw(ctx) {
+                if(!this.active) return;
                 ctx.beginPath();
                 ctx.moveTo(this.trail[0]?.x || this.x, this.trail[0]?.y || this.y);
                 for (let t of this.trail) ctx.lineTo(t.x, t.y);
-                // Color based on Team
                 ctx.strokeStyle = this.team === 1 ? '#0ff' : '#f00';
                 if (this.type === 'nuke') ctx.strokeStyle = '#ff0';
                 ctx.lineWidth = 2; ctx.stroke();
@@ -604,16 +622,21 @@
                 this.active = false;
                 createExplosion(this.x, this.y, this.type);
                 
-                // Damage Calculation
                 let radius = 80, damage = 20;
                 if (this.type === 'nuke') { radius = 300; damage = 100; }
                 if (this.type === 'laser') { damage = 30; }
                 
-                // If I am the victim, I report my damage
-                if (player && player.team !== this.team) {
+                // Damage Logic: Only the VICTIM calculates their own damage to ensure fairness
+                if (player && player.team !== this.team && !player.dead) {
                      if (dist(this.x, this.y, player.x, player.y) < radius) {
                          player.takeDamage(damage);
-                         socket.emit('hit', { damage: damage, attackerId: this.ownerType });
+                         // Tell server "I got hit" so others see it
+                         socket.emit('hit', { 
+                             damage: damage, 
+                             x: player.x, 
+                             y: player.y, 
+                             victimId: myId 
+                         });
                      }
                 }
             }
@@ -641,7 +664,8 @@
                 this.hp = 100; this.maxHp = 100;
                 this.shield = 0; // Shield property
                 this.name = isLocal ? "YOU" : "ENEMY";
-                
+                this.dead = false;
+				
                 this.ammo = { 'standard': Infinity, 'scatter': 5, 'laser': 3, 'nuke': 0, 'seeker': 3 };
                 if (gameConfig.unlockWeapons) this.ammo = { 'standard': Infinity, 'scatter': 99, 'laser': 99, 'nuke': 99, 'seeker': 99 };
                 
@@ -775,6 +799,7 @@
             }
 
             draw(ctx) {
+				if(this.dead) return;
                 ctx.save();
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.angle);
@@ -964,86 +989,106 @@ function joinGame() {
 }
 
 function setupGameListeners() {
-    // 1. Initialization
-    socket.on('init', (data) => {
-        myId = data.id;
-        myTeam = data.team;
-        seed = data.seed; 
-        
-        // Load Crates
-        if(data.crates) crates = data.crates.map(c => new Crate(c.id, c.x, c.y, c.type));
+            // 1. Initialization
+            socket.on('init', (data) => {
+                myId = data.id;
+                myTeam = data.team;
+                seed = data.seed; 
+                
+                if(data.crates) crates = data.crates.map(c => new Crate(c.id, c.x, c.y, c.type));
 
-        // Load Existing Players
-        if(data.players) {
-            for (let pid in data.players) {
-                if(pid !== myId) handlePlayerJoin(data.players[pid]);
-            }
-        }
-
-        // UI Setup
-        document.getElementById('mp-lobby-screen').classList.add('hidden');
-        document.getElementById('scoreboard').style.display = 'block';
-        document.getElementById('hud-level').innerText = "SECTOR: " + (socket.data?.room || "ONLINE");
-        
-        const hpBox = document.getElementById('hp-box');
-        hpBox.className = 'stat-box'; 
-        hpBox.classList.add(myTeam === 1 ? 'team-1-hud' : 'team-2-hud');
-
-        // Start Game
-        generateTerrain();
-        player = new Tank(true, myTeam, myId);
-        player.name = document.getElementById('inp-name').value || "YOU";
-        gameActive = true;
-        updateScoreboard();
-    });
-
-    // 2. Player Management
-    socket.on('playerJoined', (data) => {
-        if(data.id === myId) return;
-        handlePlayerJoin(data);
-    });
-    
-    socket.on('playerLeft', (id) => {
-        if(remotePlayers[id]) {
-            log(`${remotePlayers[id].name} DISCONNECTED`);
-            delete remotePlayers[id];
-            updateScoreboard();
-        }
-    });
-
-    // 3. Game Loop Sync
-    socket.on('stateUpdate', (serverPlayers) => {
-        for (let id in serverPlayers) {
-            if (id !== myId) {
-                if (!remotePlayers[id]) {
-                    handlePlayerJoin(serverPlayers[id]); // Auto-recover if we missed join event
+                if(data.players) {
+                    for (let pid in data.players) {
+                        if(pid !== myId) handlePlayerJoin(data.players[pid]);
+                    }
                 }
-                const p = remotePlayers[id];
-                p.targetX = serverPlayers[id].x;
-                p.targetY = serverPlayers[id].y;
-                p.turretAngle = serverPlayers[id].turretAngle;
-                p.hp = serverPlayers[id].hp;
-                p.shield = serverPlayers[id].shield || 0;
-                p.angle = serverPlayers[id].angle;
-            }
+
+                document.getElementById('mp-lobby-screen').classList.add('hidden');
+                document.getElementById('scoreboard').style.display = 'block';
+                document.getElementById('hud-level').innerText = "SECTOR: " + (socket.data?.room || "ONLINE");
+                
+                const hpBox = document.getElementById('hp-box');
+                hpBox.className = 'stat-box'; 
+                hpBox.classList.add(myTeam === 1 ? 'team-1-hud' : 'team-2-hud');
+
+                generateTerrain();
+                player = new Tank(true, myTeam, myId);
+                player.name = document.getElementById('inp-name').value || "YOU";
+                gameActive = true;
+                updateScoreboard();
+            });
+
+            socket.on('playerJoined', (data) => {
+                if(data.id === myId) return;
+                handlePlayerJoin(data);
+            });
+            
+            socket.on('playerLeft', (id) => {
+                if(remotePlayers[id]) {
+                    log(`${remotePlayers[id].name} DISCONNECTED`);
+                    delete remotePlayers[id];
+                    updateScoreboard();
+                }
+            });
+
+            // 3. Game Loop Sync
+            socket.on('stateUpdate', (serverPlayers) => {
+                for (let id in serverPlayers) {
+                    if (id !== myId) {
+                        if (!remotePlayers[id]) handlePlayerJoin(serverPlayers[id]);
+                        
+                        const p = remotePlayers[id];
+                        const s = serverPlayers[id];
+                        p.targetX = s.x;
+                        p.targetY = s.y;
+                        p.turretAngle = s.turretAngle;
+                        p.hp = s.hp;
+                        p.shield = s.shield || 0;
+                        p.angle = s.angle;
+                        // If server says they are dead, ensure local client knows
+                        if (s.dead && !p.dead) {
+                            p.dead = true;
+                            createExplosion(p.x, p.y, 'nuke');
+                        }
+                    }
+                }
+            });
+
+            // 4. Actions & Events
+            socket.on('playerFired', (data) => {
+                if (remotePlayers[data.id]) {
+                    remotePlayers[data.id].spawnProjectile(data.x, data.y, data.angle, data.power, data.type);
+                }
+            });
+
+            socket.on('crateSpawned', (c) => {
+                crates.push(new Crate(c.id, c.x, c.y, c.type));
+            });
+
+            socket.on('crateRemoved', (id) => {
+                crates = crates.filter(c => c.id !== id);
+            });
+
+            // --- SYNC FIX: Hit Confirmation ---
+            socket.on('hitConfirmed', (data) => {
+                // Optional: Spawn a visual particle effect at the hit location
+                // This confirms to the attacker that the server registered the event
+                if (data.x && data.y) {
+                    createExplosion(data.x, data.y, 'heal'); // Reusing 'heal' (green) or create new spark
+                }
+            });
+
+            // --- SYNC FIX: Player Death ---
+            socket.on('playerDied', (id) => {
+                if (remotePlayers[id]) {
+                    log(`${remotePlayers[id].name} WAS ELIMINATED`);
+                    remotePlayers[id].dead = true;
+                    remotePlayers[id].hp = 0;
+                    createExplosion(remotePlayers[id].x, remotePlayers[id].y, 'nuke');
+                    updateScoreboard();
+                }
+            });
         }
-    });
-
-    // 4. Actions
-    socket.on('playerFired', (data) => {
-        if (remotePlayers[data.id]) {
-            remotePlayers[data.id].spawnProjectile(data.x, data.y, data.angle, data.power, data.type);
-        }
-    });
-
-    socket.on('crateSpawned', (c) => {
-        crates.push(new Crate(c.id, c.x, c.y, c.type));
-    });
-
-    socket.on('crateRemoved', (id) => {
-        crates = crates.filter(c => c.id !== id);
-    });
-}
 
 function handlePlayerJoin(data) {
     log(`${data.name} JOINED (TEAM ${data.team})`);

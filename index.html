@@ -940,55 +940,54 @@ function joinGame() {
     const name = document.getElementById('inp-name').value || "Unknown";
     const room = document.getElementById('inp-room').value || "Global";
     
-    // Emit join request
+    // 1. SETUP LISTENERS FIRST so we don't miss the 'init' event
+    setupGameListeners();
+
+    // 2. THEN emit the request
     socket.emit('createOrJoin', {
         room: room.toUpperCase(),
         name: name,
         team: selectedTeam
     });
-
-    // Set up game listeners
-    setupGameListeners();
 }
 
 function setupGameListeners() {
+    // 1. Initialization
     socket.on('init', (data) => {
         myId = data.id;
         myTeam = data.team;
         seed = data.seed; 
         
-        // Init Crates
+        // Load Crates
         if(data.crates) crates = data.crates.map(c => new Crate(c.id, c.x, c.y, c.type));
 
-        // Init Existing Players (for scoreboard/rendering)
+        // Load Existing Players
         if(data.players) {
             for (let pid in data.players) {
-                if(pid !== myId) {
-                    handlePlayerJoin(data.players[pid]);
-                }
+                if(pid !== myId) handlePlayerJoin(data.players[pid]);
             }
         }
 
-        // Hide Lobby / Show HUD
+        // UI Setup
         document.getElementById('mp-lobby-screen').classList.add('hidden');
         document.getElementById('scoreboard').style.display = 'block';
-        document.getElementById('hud-level').innerText = "SECTOR: " + socket.data?.room || "ONLINE";
+        document.getElementById('hud-level').innerText = "SECTOR: " + (socket.data?.room || "ONLINE");
         
         const hpBox = document.getElementById('hp-box');
-        hpBox.className = 'stat-box'; // reset
+        hpBox.className = 'stat-box'; 
         hpBox.classList.add(myTeam === 1 ? 'team-1-hud' : 'team-2-hud');
 
-        // Init Game Physics
+        // Start Game
         generateTerrain();
         player = new Tank(true, myTeam, myId);
         player.name = document.getElementById('inp-name').value || "YOU";
         gameActive = true;
-        
         updateScoreboard();
     });
 
+    // 2. Player Management
     socket.on('playerJoined', (data) => {
-        if(data.id === myId) return; // ignore self
+        if(data.id === myId) return;
         handlePlayerJoin(data);
     });
     
@@ -1000,7 +999,38 @@ function setupGameListeners() {
         }
     });
 
-    // ... Keep existing listeners (stateUpdate, playerFired, etc) ...
+    // 3. Game Loop Sync
+    socket.on('stateUpdate', (serverPlayers) => {
+        for (let id in serverPlayers) {
+            if (id !== myId) {
+                if (!remotePlayers[id]) {
+                    handlePlayerJoin(serverPlayers[id]); // Auto-recover if we missed join event
+                }
+                const p = remotePlayers[id];
+                p.targetX = serverPlayers[id].x;
+                p.targetY = serverPlayers[id].y;
+                p.turretAngle = serverPlayers[id].turretAngle;
+                p.hp = serverPlayers[id].hp;
+                p.shield = serverPlayers[id].shield || 0;
+                p.angle = serverPlayers[id].angle;
+            }
+        }
+    });
+
+    // 4. Actions
+    socket.on('playerFired', (data) => {
+        if (remotePlayers[data.id]) {
+            remotePlayers[data.id].spawnProjectile(data.x, data.y, data.angle, data.power, data.type);
+        }
+    });
+
+    socket.on('crateSpawned', (c) => {
+        crates.push(new Crate(c.id, c.x, c.y, c.type));
+    });
+
+    socket.on('crateRemoved', (id) => {
+        crates = crates.filter(c => c.id !== id);
+    });
 }
 
 function handlePlayerJoin(data) {
@@ -1037,57 +1067,7 @@ function updateScoreboard() {
     document.getElementById('online-count').innerText = allPlayers.length;
 }
 
-                socket.on('playerJoined', (data) => {
-                    log(`PLAYER JOINED (TEAM ${data.team})`);
-                    const t = new Tank(false, data.team, data.id);
-                    t.name = data.name;
-                    remotePlayers[data.id] = t;
-                    updateOnlineCount();
-                });
-
-                socket.on('playerLeft', (id) => {
-                    delete remotePlayers[id];
-                    updateOnlineCount();
-                });
-
-                socket.on('stateUpdate', (serverPlayers) => {
-                    for (let id in serverPlayers) {
-                        if (id !== myId) {
-                            if (!remotePlayers[id]) {
-                                const pData = serverPlayers[id];
-                                remotePlayers[id] = new Tank(false, pData.team, id);
-                            }
-                            const p = remotePlayers[id];
-                            p.targetX = serverPlayers[id].x;
-                            p.targetY = serverPlayers[id].y;
-                            p.turretAngle = serverPlayers[id].turretAngle;
-                            p.hp = serverPlayers[id].hp;
-                            p.shield = serverPlayers[id].shield || 0; // Sync shield
-                            p.angle = serverPlayers[id].angle;
-                        }
-                    }
-                });
-
-                socket.on('playerFired', (data) => {
-                    if (remotePlayers[data.id]) {
-                        remotePlayers[data.id].spawnProjectile(data.x, data.y, data.angle, data.power, data.type);
-                    }
-                });
-
-                // Crate Events
-                socket.on('crateSpawned', (c) => {
-                    crates.push(new Crate(c.id, c.x, c.y, c.type));
-                });
-
-                socket.on('crateRemoved', (id) => {
-                    crates = crates.filter(c => c.id !== id);
-                });
-
-            } catch (e) {
-                alert("Socket.io connection failed. Is the server running?");
-                location.reload();
-            }
-        }
+              
 
         function updateOnlineCount() {
             const count = Object.keys(remotePlayers).length + 1;

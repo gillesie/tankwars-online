@@ -26,7 +26,6 @@ export function startGameClient() {
     document.getElementById('mp-lobby-screen').classList.add('hidden');
     document.getElementById('scoreboard').style.display = 'block';
     
-    // FIX: Only check socket room if we are in Multiplayer and socket exists
     if (state.isMultiplayer && state.socket && state.socket.data) {
         document.getElementById('hud-level').innerText = "SECTOR: " + (state.socket.data.room || "ONLINE");
     }
@@ -35,7 +34,7 @@ export function startGameClient() {
     log("MISSION START");
 }
 
-function drawTrajectory(ctx, tank) {
+function drawTrajectory(ctx, tank, scaleX = 1, scaleY = 1, offsetX = 0, offsetY = 0) {
     const duration = Date.now() - state.mousePressedTime;
     let power = Math.min(duration / 40, 25);
     power = Math.max(power, 2);
@@ -45,10 +44,11 @@ function drawTrajectory(ctx, tank) {
     let startY = (tank.y - 15) + Math.sin(rad) * 20;
 
     ctx.beginPath();
-    ctx.moveTo(startX, startY);
+    // Apply scale/offset only for drawing
+    ctx.moveTo(startX * scaleX + offsetX, startY * scaleY + offsetY);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 2 * scaleX; // Scale line width too roughly
+    if(scaleX === 1) ctx.setLineDash([5, 5]);
 
     let simX = startX;
     let simY = startY;
@@ -57,18 +57,22 @@ function drawTrajectory(ctx, tank) {
     
     if (tank.currentWeapon === 'laser') {
         simVx *= 2; simVy *= 2;
-        ctx.lineTo(simX + simVx * 200, simY + simVy * 200);
-        ctx.stroke(); ctx.setLineDash([]); return;
+        ctx.lineTo((simX + simVx * 200) * scaleX + offsetX, (simY + simVy * 200) * scaleY + offsetY);
+        ctx.stroke(); if(scaleX === 1) ctx.setLineDash([]); return;
     }
 
     for(let i=0; i<100; i++) {
         simVy += GRAVITY;
         if (tank.currentWeapon !== 'seeker') simVx += state.wind;
         simX += simVx; simY += simVy;
-        ctx.lineTo(simX, simY);
+        
+        // Draw point mapped to context
+        ctx.lineTo(simX * scaleX + offsetX, simY * scaleY + offsetY);
+        
         if (simY >= getTerrainHeight(simX)) break;
     }
-    ctx.stroke(); ctx.setLineDash([]);
+    ctx.stroke(); 
+    if(scaleX === 1) ctx.setLineDash([]);
 }
 
 function drawMinimap() {
@@ -95,6 +99,13 @@ function drawMinimap() {
     if (state.player) {
         ctx.fillStyle = state.player.team === 1 ? '#0ff' : '#f00';
         ctx.fillRect(state.player.x * scaleX, state.player.y * scaleY, 4, 4);
+        
+        // Show Trajectory on Minimap
+        if (state.isCharging && state.gameActive && !state.isDrawing) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            drawTrajectory(ctx, state.player, scaleX, scaleY);
+        }
     }
     
     Object.values(state.remotePlayers).forEach(e => {
@@ -102,6 +113,12 @@ function drawMinimap() {
             ctx.fillStyle = e.team === 1 ? '#0ff' : '#f00';
             ctx.fillRect(e.x * scaleX, e.y * scaleY, 4, 4);
         }
+    });
+
+    // Show Projectiles on Minimap
+    ctx.fillStyle = '#ff0';
+    state.projectiles.forEach(p => {
+        ctx.fillRect(p.x * scaleX, p.y * scaleY, 2, 2);
     });
 
     ctx.fillStyle = '#fff';
@@ -123,11 +140,9 @@ function animate() {
     lastTime = now;
 
     if (state.gameActive && state.player) {
-        // --- HOOK FOR SP MANAGER ---
         if (state.gameMode === 'sp' && state.spManager) {
             state.spManager.update();
         }
-        // ---------------------------
 
         state.player.update();
         Object.values(state.remotePlayers).forEach(p => p.update());

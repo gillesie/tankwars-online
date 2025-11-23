@@ -42,6 +42,7 @@
         <div id="power-overlay">
             <span class="stat-label">SHOT POWER</span>
             <div class="bar-container"><div class="bar-fill power-fill" id="hud-power" style="width: 0%;"></div></div>
+            <div id="power-text" style="margin-top: 5px; font-weight: bold; color: #0ff;">0%</div>
         </div>
 
         <div id="battle-log"></div>
@@ -54,27 +55,20 @@
     <div id="start-screen">
         <h1>NEON BLITZ</h1>
         <h2>TACTICAL CONFIGURATION</h2>
-        <div class="config-panel">
-            <div class="config-item">
-                <label>SERVER REGION</label>
-                <select disabled><option>LOCALHOST:3000 (Global)</option></select>
-            </div>
-            <div class="config-item">
-                <label>STARTING ARSENAL</label>
-                <select id="cfg-weapons">
-                    <option value="standard" selected>STANDARD ISSUE</option>
-                    <option value="loaded">FULLY LOADED (Test Mode)</option>
-                </select>
-            </div>
-        </div>
+        
+        <input type="hidden" id="cfg-weapons" value="standard">
+        
         <div class="btn-group">
-			<button class="secondary" onclick="window.initGame()">DEPLOY ONLINE</button>
+			<button class="secondary" onclick="window.initGame()">MULTIPLAYER</button>
 			<button onclick="window.initSinglePlayer()">SINGLE PLAYER</button>
 		</div>
         <p style="margin-top: 20px; font-size: 12px;">
             CONTROLS: [A/D] Move • [SPACE] Jump (Hold) • [MOUSE] Aim/Fire • [SCROLL] Zoom<br>
             BUILDER: Select Tool -> Drag to draw platform.
         </p>
+        <div style="margin-top: 30px; color: #555; font-size: 14px; font-weight: bold;">
+            Game created by @Gillesie
+        </div>
     </div>
 
     <div id="mp-lobby-screen" class="hidden">

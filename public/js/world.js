@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { TERRAIN_WIDTH, SEGMENT_SIZE, WORLD_HEIGHT } from './config.js';
-import { rand } from './utils.js';
+import { rand, seededRandom } from './utils.js';
 
 export function generateTerrain(destroyedIds = []) {
     state.terrainPoints.length = 0;
@@ -93,6 +93,25 @@ export function drawTerrain(ctx) {
         ctx.fillRect(0,0,p.width,p.height);
         ctx.strokeRect(0,0,p.width,p.height);
         
+        // Draw cracks if damaged
+        if (p.type !== 'unbreakable' && p.hp < p.maxHp) {
+            const damageLevel = 1 - (p.hp / p.maxHp);
+            ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            // Simple deterministic pseudo-random cracks based on platform props
+            let seed = p.width + p.x; 
+            const crackCount = Math.floor(p.width / 20 * damageLevel);
+            for(let k=0; k<crackCount; k++) {
+                seed = (seed * 9301 + 49297) % 233280;
+                const sx = (seed / 233280) * p.width;
+                const sy = (k % 2 === 0) ? 0 : p.height;
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(sx + ((seed % 20) - 10), p.height / 2);
+            }
+            ctx.stroke();
+        }
+
         if (p.hp < p.maxHp && p.type !== 'unbreakable') {
             ctx.fillStyle = '#fff';
             ctx.font = '10px Arial';

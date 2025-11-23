@@ -1,9 +1,10 @@
 import { state } from './state.js';
 import { Tank } from './entities/Tank.js';
+import { Crate } from './entities/Crate.js';
 import { generateTerrain } from './world.js';
 import { startGameClient } from './game.js';
 import { updateHUD, log, updateScoreboard } from './ui.js';
-import { rand, fxRand } from './utils.js'; // Added fxRand
+import { rand, fxRand } from './utils.js'; 
 
 export class SinglePlayerManager {
     constructor() {
@@ -18,7 +19,7 @@ export class SinglePlayerManager {
         state.spManager = this;
         state.myId = 'player';
         state.myTeam = 1;
-        state.remotePlayers = {}; // Used for AI Tanks
+        state.remotePlayers = {}; 
         state.projectiles = [];
         state.crates = [];
         state.planes = [];
@@ -56,7 +57,6 @@ export class SinglePlayerManager {
     spawnEnemy() {
         const id = `cpu_${Date.now()}_${Math.random()}`;
         
-        // FIX: Use fxRand for proper random distribution
         const x = fxRand(1000, 5000); 
         
         const tank = new Tank(false, 2, id, true); 
@@ -67,7 +67,7 @@ export class SinglePlayerManager {
         tank.y = -500;
         
         // Set Difficulty based on Wave
-        tank.difficulty = this.wave; // New property
+        tank.difficulty = this.wave; 
         
         // Difficulty scaling for HP
         tank.maxHp = 50 + (this.wave * 10);
@@ -82,6 +82,8 @@ export class SinglePlayerManager {
 
         // Check Wave Clear
         const enemies = Object.values(state.remotePlayers);
+        // In SP, we might keep dead tanks in the array briefly for animations, 
+        // but logic counts only alive ones.
         const aliveEnemies = enemies.filter(e => !e.dead).length;
 
         if (this.waveInProgress && enemies.length > 0 && aliveEnemies === 0) {
@@ -94,20 +96,19 @@ export class SinglePlayerManager {
                 if(state.gameActive) this.startWave(this.wave + 1);
             }, 5000);
         }
-        
-        // Occasionally spawn planes
-        if (Math.random() < 0.002 * this.wave) {
-             // Logic to spawn plane (reuse Server logic basically)
-             // We can't import Plane easily if it's not exported or if we don't have the manager.
-             // But client has state.planes.
-             // We need to import Plane class.
-        }
     }
 
     onEnemyKilled(tank) {
         log(`DESTROYED ${tank.name}`);
         state.enemiesKilled++;
-        // Maybe drop crate?
+        
+        // Drop Crate (50% chance)
+        if (Math.random() < 0.5) {
+            const type = ['repair', 'ammo', 'shield', 'scatter', 'seeker', 'nuke'][Math.floor(Math.random() * 6)];
+            const crate = new Crate(`crate_${Date.now()}`, tank.x, tank.y, type);
+            state.crates.push(crate);
+        }
+        
         updateScoreboard();
     }
 

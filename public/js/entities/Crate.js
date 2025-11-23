@@ -24,9 +24,12 @@ export class Crate {
         }
     }
     collect() {
-        state.socket.emit('crateCollected', this.id);
+        if (state.isMultiplayer && state.socket) {
+            state.socket.emit('crateCollected', this.id);
+        }
+        
         this.applyEffect(state.player);
-        // Direct remove for responsiveness, server will confirm
+        // Direct remove for responsiveness
         state.crates = state.crates.filter(c => c.id !== this.id);
         createExplosion(this.x, this.y, 'heal');
     }

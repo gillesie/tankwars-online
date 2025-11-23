@@ -7,7 +7,7 @@ import { Projectile } from './entities/Projectile.js';
 import { FloatingText } from './entities/FloatingText.js';
 import { Particle } from './entities/Particle.js';
 import { generateTerrain } from './world.js';
-import { log, updateHUD, updateScoreboard, updateLobbyStatus, createExplosion } from './ui.js';
+import { log, updateHUD, updateScoreboard, updateLobbyStatus, createExplosion, createDebris } from './ui.js';
 import { fxRand } from './utils.js';
 import { startGameClient } from './game.js';
 
@@ -39,7 +39,6 @@ export function joinGame() {
     const name = document.getElementById('inp-name').value || "Unknown";
     const room = document.getElementById('inp-room').value || "Global";
     
-    // Clear old listeners if reconnecting would handle here, but separate init usually cleaner
     setupGameListeners();
 
     state.socket.emit('createOrJoin', {
@@ -155,6 +154,7 @@ function setupGameListeners() {
         const p = state.platforms.find(x => x.id === id);
         if(p) {
             createExplosion(p.x + p.width/2, p.y, 'standard');
+            createDebris(p.x, p.y, p.width, p.height);
             state.platforms = state.platforms.filter(x => x.id !== id);
         }
     });

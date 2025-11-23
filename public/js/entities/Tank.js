@@ -1,17 +1,28 @@
 import { state } from '../state.js';
 import { GRAVITY, JUMP_FORCE, JUMP_SUSTAIN, TERRAIN_WIDTH } from '../config.js';
 import { getTerrainHeight } from '../world.js';
-import { clamp, dist, fxRand } from '../utils.js'; // Added fxRand
+import { clamp, dist, fxRand } from '../utils.js'; 
 import { Projectile } from './Projectile.js';
 import { createExplosion, updateHUD } from '../ui.js';
 import { FloatingText } from './FloatingText.js';
 
+// --- ASSET LOADING ---
+// We encode the SVGs you provided into Data URIs so they can be used as images
+const blueTankSVG = `<svg width="100" height="60" viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#0055aa;stop-opacity:1" /><stop offset="100%" style="stop-color:#00ffff;stop-opacity:1" /></linearGradient><filter id="glow"><feGaussianBlur stdDeviation="2.5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M10,40 L90,40 L85,55 L15,55 Z" fill="#222" stroke="#0ff" stroke-width="2"/><path d="M15,40 L25,25 L75,25 L85,40 Z" fill="url(#blueGrad)" stroke="#fff" stroke-width="1"/><circle cx="50" cy="25" r="15" fill="#003366" stroke="#0ff" stroke-width="2"/><rect x="50" y="20" width="45" height="10" fill="#000" stroke="#0ff" stroke-width="1"/><rect x="90" y="18" width="5" height="14" fill="#0ff" filter="url(#glow)"/></svg>`;
+
+const redTankSVG = `<svg width="100" height="60" viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#aa0000;stop-opacity:1" /><stop offset="100%" style="stop-color:#ff5500;stop-opacity:1" /></linearGradient><filter id="glowRed"><feGaussianBlur stdDeviation="2.5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M10,40 L90,40 L85,55 L15,55 Z" fill="#222" stroke="#f00" stroke-width="2"/><path d="M15,40 L25,25 L75,25 L85,40 Z" fill="url(#redGrad)" stroke="#fff" stroke-width="1"/><circle cx="50" cy="25" r="15" fill="#660000" stroke="#f00" stroke-width="2"/><rect x="50" y="20" width="45" height="10" fill="#000" stroke="#f00" stroke-width="1"/><rect x="90" y="18" width="5" height="14" fill="#f00" filter="url(#glowRed)"/></svg>`;
+
+const blueImg = new Image();
+blueImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(blueTankSVG);
+
+const redImg = new Image();
+redImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(redTankSVG);
+
 export class Tank {
-    // Added isAI parameter, default false
     constructor(isLocal, team, id, isAI = false) {
         this.id = id;
         this.isLocal = isLocal;
-        this.isAI = isAI; // New Flag
+        this.isAI = isAI;
         this.team = team; 
         this.width = 30; this.height = 15;
         this.x = isLocal ? (team === 1 ? 200 : TERRAIN_WIDTH - 200) : 0;
@@ -33,9 +44,8 @@ export class Tank {
         this.groundStartHeight = 0;
         this.hitFlashTimer = 0;
 
-        // AI Specifics
         this.isAI = isAI;
-        this.difficulty = 1; // Default difficulty
+        this.difficulty = 1;
         this.aiTimer = 0;
         this.aiState = 'idle'; 
         this.nextMoveTime = 0;
@@ -44,13 +54,13 @@ export class Tank {
     update() {
         if (this.dead) return;
 
-        // Run physics if it's our player OR an AI bot running locally
         if (this.isLocal || this.isAI) {
-            this.vx = 0;
+            // Fix: Only reset velocity for human players
+            if (!this.isAI) {
+                this.vx = 0;
+            }
             
-            // --- INPUT HANDLING ---
             if (!this.isAI && state.gameActive) {
-                // Human Input
                 if (state.keys['ArrowLeft'] || state.keys['a']) this.vx = -4;
                 if (state.keys['ArrowRight'] || state.keys['d']) this.vx = 4;
                 
@@ -70,17 +80,14 @@ export class Tank {
                 const trueWorldY = state.mousePos.y / state.camera.zoom + state.camera.y;
                 this.turretAngle = Math.atan2(trueWorldY - (this.y - 10), trueWorldX - this.x) * 180 / Math.PI;
             } else if (this.isAI && state.gameActive) {
-                // --- AI LOGIC ---
                 this.updateAI();
             }
 
-            // Physics
             this.vy += GRAVITY;
             this.x += this.vx; this.y += this.vy;
             
             this.handleCollisions();
 
-            // Network Sync (Only if Human and Multiplayer)
             if (!this.isAI && state.isMultiplayer && state.socket) {
                 state.socket.emit('updateState', { 
                     x: this.x, y: this.y, 
@@ -91,7 +98,6 @@ export class Tank {
                 });
             }
         } else {
-            // Remote player interpolation
             if(dist(this.x, this.y, this.targetX, this.targetY) > 500) {
                 this.x = this.targetX;
                 this.y = this.targetY;
@@ -109,74 +115,42 @@ export class Tank {
         const dx = state.player.x - this.x;
         const dy = (state.player.y - 20) - this.y;
         
-        // --- 1. AIMING LOGIC ---
-        // Calculate direct angle
         let targetAngle = Math.atan2(dy, dx) * 180 / Math.PI;
-        
-        // Gravity Compensation (Heuristic)
-        // Adjust aim upward based on distance
         targetAngle -= (distToPlayer / 45); 
 
-        // Smooth Turret Movement
-        // Speed increases slightly with difficulty
         const turnSpeed = 0.05 + (this.difficulty * 0.01); 
         this.turretAngle += (targetAngle - this.turretAngle) * clamp(turnSpeed, 0.05, 0.3);
 
-        // --- 2. FIRING LOGIC ---
         this.aiTimer++;
-        
-        // Fire Interval decreases with difficulty (Faster shooting)
-        // Wave 1: ~5 seconds, Wave 10: ~2 seconds
         const fireInterval = Math.max(60, 150 - (this.difficulty * 8));
 
         if (this.aiTimer > fireInterval && distToPlayer < 1500) { 
-             // Accuracy: Spread decreases with difficulty
              const inaccuracy = Math.max(0.2, 4.0 - (this.difficulty * 0.4));
-             
-             // Only fire if roughly facing the target
              if (Math.abs(targetAngle - this.turretAngle) < 15) {
-                 // Charge power based on distance
                  const power = Math.min(distToPlayer / 30, 25);
-                 
-                 // Fire with random error based on difficulty
                  this.fire(power + fxRand(-inaccuracy, inaccuracy));
-                 
                  this.aiTimer = 0;
-                 // Plan next move after firing
                  this.nextMoveTime = Date.now() + fxRand(500, 1500);
              }
         }
 
-        // --- 3. MOVEMENT LOGIC ---
         if (Date.now() > this.nextMoveTime) {
-             const optimalRange = 600; // Try to stay at this distance
-             
-             if (distToPlayer < optimalRange - 150) {
-                 // Too close: Back away
-                 this.vx = (dx > 0) ? -2 : 2;
-             } else if (distToPlayer > optimalRange + 150) {
-                 // Too far: Advance
-                 this.vx = (dx > 0) ? 2 : -2;
-             } else {
-                 // Good range: Random strafe or stop
-                 const randMove = Math.random();
-                 if (randMove < 0.3) this.vx = 0;
+             const optimalRange = 600; 
+             if (distToPlayer < optimalRange - 150) this.vx = (dx > 0) ? -2 : 2;
+             else if (distToPlayer > optimalRange + 150) this.vx = (dx > 0) ? 2 : -2;
+             else {
+                 if (Math.random() < 0.3) this.vx = 0;
                  else this.vx = (Math.random() > 0.5 ? 2 : -2);
              }
 
-             // Jump logic: Jump over obstacles or erratically
-             // Chance increases with difficulty
              if (this.onGround && Math.random() < (0.05 + this.difficulty * 0.02)) {
                  this.vy = -10;
              }
-             
-             // Reset move timer
              this.nextMoveTime = Date.now() + fxRand(1000, 3000);
         }
     }
 
     handleCollisions() {
-        // ... (Existing code matches provided file exactly, no changes needed inside) ...
         this.x = clamp(this.x, 20, TERRAIN_WIDTH - 20);
         this.onGround = false;
         const floorY = getTerrainHeight(this.x);
@@ -214,7 +188,6 @@ export class Tank {
         const bx = this.x + Math.cos(rad) * 20;
         const by = (this.y - 15) + Math.sin(rad) * 20;
         
-        // Only emit if this is a human player in multiplayer
         if (this.isLocal && !this.isAI && state.isMultiplayer) {
             state.socket.emit('fire', { 
                 x: bx, y: by, angle: this.turretAngle, 
@@ -227,7 +200,6 @@ export class Tank {
     }
 
     spawnProjectile(x, y, angle, power, type) {
-        // For AI, ownerType is 'enemy'. For Player, 'player'.
         const owner = this.isAI ? 'enemy' : (this.isLocal ? 'player' : 'enemy');
         const p = new Projectile(x, y, angle, power, owner, type, this.team);
         state.projectiles.push(p);
@@ -262,17 +234,13 @@ export class Tank {
             createExplosion(this.x, this.y, 'nuke');
             
             if (this.isLocal && !this.isAI) {
-                // Human Player Died
                 if (state.isMultiplayer) state.socket.emit('died');
                 else {
-                    // SP Logic: Game Over immediately or reduce lives?
                     this.lives--;
                     this.dead = true;
                     if(this.lives <= 0) {
-                         // End SP Game
                          state.spManager.endGame();
                     } else {
-                         // Respawn logic for SP
                          setTimeout(() => {
                              this.dead = false;
                              this.hp = 100;
@@ -282,17 +250,14 @@ export class Tank {
                     }
                 }
             } else if (this.isAI) {
-                // AI Died
                 this.dead = true;
                 this.lives = 0;
-                // Add Score
                 if (state.spManager) state.spManager.onEnemyKilled(this);
             }
         }
         if(!this.isAI) updateHUD();
     }
     
-    // ... draw method remains unchanged ...
     draw(ctx) {
         if(this.dead) {
             ctx.save();
@@ -305,6 +270,7 @@ export class Tank {
             return;
         }
 
+        // --- DRAW BODY (SVG) ---
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
@@ -316,18 +282,15 @@ export class Tank {
             }
         }
 
-        const color = this.team === 1 ? '#0ff' : '#f00';
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = color;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.fillStyle = '#000';
-
-        ctx.beginPath();
-        ctx.moveTo(-15, 0); ctx.lineTo(15, 0);
-        ctx.lineTo(10, -15); ctx.lineTo(-10, -15);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
+        // Decide which image to draw based on team
+        const img = (this.team === 1) ? blueImg : redImg;
         
+        // Draw Image centered (scaled down from 100x60 to 40x24 approx)
+        // Original pivot was at bottom center (x, y). 
+        // We shift drawing up by height to align tracks with (0,0)
+        // 36 width, 22 height keeps roughly the proportions
+        ctx.drawImage(img, -18, -22, 36, 22);
+
         if (this.shield > 0) {
             ctx.strokeStyle = '#ff0'; ctx.beginPath();
             ctx.arc(0, -7, 25, 0, Math.PI*2); ctx.stroke();
@@ -335,22 +298,29 @@ export class Tank {
 
         if (!this.isLocal) {
             ctx.shadowBlur = 0;
-            ctx.fillStyle = color;
+            ctx.fillStyle = this.team === 1 ? '#0ff' : '#f00';
             ctx.font = "10px Orbitron";
             ctx.textAlign = "center";
             ctx.fillText(this.name, 0, -30);
         }
-
         ctx.restore();
 
+        // --- DRAW TURRET (Aim Indicator) ---
+        // We keep this so players know where they are shooting.
         ctx.save();
-        ctx.translate(this.x, this.y - 7);
+        ctx.translate(this.x, this.y - 7); // Turret pivot point
         ctx.rotate(this.turretAngle * Math.PI / 180);
-        ctx.shadowBlur = 10; ctx.shadowColor = color;
-        ctx.fillStyle = color;
-        ctx.fillRect(0, -3, 30, 6);
+        
+        ctx.shadowBlur = 5; 
+        ctx.shadowColor = this.team === 1 ? '#0ff' : '#f00';
+        ctx.fillStyle = this.team === 1 ? '#0ff' : '#f00';
+        
+        // Draw a simpler barrel line to overlap the SVG's static barrel
+        ctx.fillRect(0, -2, 25, 4);
+        
         ctx.restore();
 
+        // --- HEALTH BARS ---
         ctx.fillStyle = '#f00'; ctx.fillRect(this.x - 20, this.y - 50, 40, 4);
         const drawHp = Math.min(this.hp, this.maxHp); 
         const hpPct = drawHp / this.maxHp; 
@@ -361,7 +331,7 @@ export class Tank {
         }
 
         if(this.shield > 0) {
-                ctx.fillStyle = '#ff0'; ctx.fillRect(this.x - 20, this.y - 56, 40 * (this.shield / 50), 2);
+            ctx.fillStyle = '#ff0'; ctx.fillRect(this.x - 20, this.y - 56, 40 * (this.shield / 50), 2);
         }
     }
 }

@@ -2,7 +2,7 @@ import { state } from '../state.js';
 import { GRAVITY } from '../config.js';
 import { getTerrainHeight } from '../world.js';
 import { dist, clamp } from '../utils.js';
-import { createExplosion } from '../ui.js';
+import { createExplosion, createDebris } from '../ui.js';
 
 export class Projectile {
     constructor(x, y, angle, power, ownerType, type, team) {
@@ -90,12 +90,23 @@ export class Projectile {
 
                     if (localX >= 0 && localX <= p.width && localY >= 0 && localY <= p.height) {
                         this.explode();
-                        if (this.ownerType === 'player' && p.type !== 'unbreakable') {
+                        if ((this.ownerType === 'player' || this.ownerType === 'enemy') && p.type !== 'unbreakable') {
                             const dmg = (this.type === 'nuke') ? 100 : 25;
-                            state.socket.emit('platformDamage', { id: p.id, damage: dmg });
+                            
+                            if (state.isMultiplayer && state.socket) {
+                                state.socket.emit('platformDamage', { id: p.id, damage: dmg });
+                            }
+
                             p.hp -= dmg;
                             if(p.hp <= 0) {
-                                state.socket.emit('platformDestroyed', p.id);
+                                if (state.isMultiplayer && state.socket) {
+                                    state.socket.emit('platformDestroyed', p.id);
+                                } else {
+                                    // SP or Local Destroy
+                                    createExplosion(p.x + p.width/2, p.y, 'standard');
+                                    createDebris(p.x, p.y, p.width, p.height);
+                                    state.platforms = state.platforms.filter(plat => plat.id !== p.id);
+                                }
                             }
                         }
                         return;

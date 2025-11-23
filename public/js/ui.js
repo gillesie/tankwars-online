@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { Particle } from './entities/Particle.js';
+import { fxRand } from './utils.js';
 
 export function log(msg) {
     const div = document.getElementById('battle-log');
@@ -34,6 +35,9 @@ export function updateHUD() {
         const duration = Date.now() - state.mousePressedTime;
         const pct = Math.min((duration / 1000) * 100, 100);
         document.getElementById('hud-power').style.width = pct + "%";
+        document.getElementById('power-text').innerText = Math.floor(pct) + "%";
+    } else {
+        document.getElementById('power-text').innerText = "0%";
     }
 }
 
@@ -47,6 +51,9 @@ export function updateScoreboard() {
     let blueCount = 0; let redCount = 0;
 
     allPlayers.forEach(p => {
+        // Single Player: Hide dead enemies
+        if (state.gameMode === 'sp' && p.dead && p.team !== state.player.team) return;
+
         const div = document.createElement('div');
         div.className = 'sb-row ' + (p.team === 1 ? 'sb-blue' : 'sb-red');
         const status = p.dead ? (p.lives > 0 ? "(RESPAWNING)" : "(K.I.A.)") : "";
@@ -71,4 +78,14 @@ export function createExplosion(x, y, type) {
     const color = type === 'nuke' ? '#ff0' : (type === 'heal' ? '#0f0' : '#f60');
     state.screenShake = type === 'nuke' ? 20 : 5;
     for(let i=0; i<count; i++) state.particles.push(new Particle(x, y, color, 'fire'));
+}
+
+export function createDebris(x, y, w, h) {
+    const count = Math.min(w/5, 20);
+    for(let i=0; i<count; i++) {
+        const px = x + fxRand(0, w);
+        const py = y + fxRand(0, h);
+        const color = Math.random() > 0.5 ? '#555' : '#333';
+        state.particles.push(new Particle(px, py, color, 'smoke'));
+    }
 }

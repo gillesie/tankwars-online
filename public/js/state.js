@@ -43,9 +43,9 @@ export const state = {
     drawStart: { x: 0, y: 0 },
     
     // Config
-    gameConfig: { unlockWeapons: false }
+    gameConfig: { unlockWeapons: false },
 	
-	//game mode & single player related
+	//--- NEW SINGLE PLAYER STATE ---
 	gameMode: 'menu', // 'menu', 'mp', 'sp'
     wave: 1,
     enemiesKilled: 0,

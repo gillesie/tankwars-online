@@ -2,16 +2,8 @@ import { init } from './game.js';
 import { connectSocket, joinGame } from './network.js';
 import { state } from './state.js';
 import { updateHUD } from './ui.js';
+// NEW IMPORT
 import { SinglePlayerManager } from './singleplayer.js';
-
-window.initSinglePlayer = function() {
-    document.getElementById('start-screen').classList.add('hidden');
-    // Hide lobby stuff just in case
-    document.getElementById('mp-lobby-screen').classList.add('hidden');
-    
-    const sp = new SinglePlayerManager();
-    sp.init();
-};
 
 // Expose global functions for HTML buttons
 window.initGame = function() {
@@ -21,6 +13,15 @@ window.initGame = function() {
     document.getElementById('mp-lobby-screen').classList.remove('hidden');
     window.setTeam(1);
     connectSocket();
+};
+
+// NEW FUNCTION
+window.initSinglePlayer = function() {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('mp-lobby-screen').classList.add('hidden');
+    
+    const sp = new SinglePlayerManager();
+    sp.init();
 };
 
 window.setTeam = function(t) {

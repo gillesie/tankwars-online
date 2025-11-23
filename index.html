@@ -255,24 +255,12 @@
 
     <div id="start-screen">
         <h1>NEON BLITZ</h1>
-        <h2>TACTICAL CONFIGURATION</h2>
+        <p style="color: #0ff; margin-bottom: 30px; font-size: 14px; letter-spacing: 2px; font-weight: bold;">GAME DEVELOPED BY @GILLESIE</p>
         
-        <div class="config-panel">
-            <div class="config-item">
-                <label>SERVER REGION</label>
-                <select disabled><option>LOCALHOST:3000 (Global)</option></select>
-            </div>
-            <div class="config-item">
-                <label>STARTING ARSENAL</label>
-                <select id="cfg-weapons">
-                    <option value="standard" selected>STANDARD ISSUE</option>
-                    <option value="loaded">FULLY LOADED (Test Mode)</option>
-                </select>
-            </div>
-        </div>
+        <input type="hidden" id="cfg-weapons" value="standard">
 
         <div class="btn-group">
-            <button class="secondary" onclick="initGame('multi')">DEPLOY ONLINE</button>
+            <button class="secondary" onclick="initGame('multi')">MULTIPLAYER</button>
         </div>
         
         <p style="margin-top: 20px; font-size: 12px;">

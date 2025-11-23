@@ -44,4 +44,10 @@ export const state = {
     
     // Config
     gameConfig: { unlockWeapons: false }
+	
+	//game mode & single player related
+	gameMode: 'menu', // 'menu', 'mp', 'sp'
+    wave: 1,
+    enemiesKilled: 0,
+    spManager: null // Reference to the single player logic
 };

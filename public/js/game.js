@@ -118,6 +118,9 @@ function animate() {
     lastTime = now;
 
     if (state.gameActive && state.player) {
+		if (state.gameMode === 'sp' && state.spManager) {
+            state.spManager.update();
+        }
         state.player.update();
         Object.values(state.remotePlayers).forEach(p => p.update());
         state.projectiles.forEach(p => p.update());

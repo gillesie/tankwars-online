@@ -2,6 +2,16 @@ import { init } from './game.js';
 import { connectSocket, joinGame } from './network.js';
 import { state } from './state.js';
 import { updateHUD } from './ui.js';
+import { SinglePlayerManager } from './singleplayer.js';
+
+window.initSinglePlayer = function() {
+    document.getElementById('start-screen').classList.add('hidden');
+    // Hide lobby stuff just in case
+    document.getElementById('mp-lobby-screen').classList.add('hidden');
+    
+    const sp = new SinglePlayerManager();
+    sp.init();
+};
 
 // Expose global functions for HTML buttons
 window.initGame = function() {

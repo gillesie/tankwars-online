@@ -1,15 +1,17 @@
 import { state } from '../state.js';
 import { GRAVITY, JUMP_FORCE, JUMP_SUSTAIN, TERRAIN_WIDTH } from '../config.js';
 import { getTerrainHeight } from '../world.js';
-import { clamp, dist } from '../utils.js';
+import { clamp, dist, fxRand } from '../utils.js'; // Added fxRand
 import { Projectile } from './Projectile.js';
 import { createExplosion, updateHUD } from '../ui.js';
 import { FloatingText } from './FloatingText.js';
 
 export class Tank {
-    constructor(isLocal, team, id) {
+    // Added isAI parameter, default false
+    constructor(isLocal, team, id, isAI = false) {
         this.id = id;
         this.isLocal = isLocal;
+        this.isAI = isAI; // New Flag
         this.team = team; 
         this.width = 30; this.height = 15;
         this.x = isLocal ? (team === 1 ? 200 : TERRAIN_WIDTH - 200) : 0;
@@ -20,7 +22,7 @@ export class Tank {
         this.hp = 100; this.maxHp = 100;
         this.shield = 0; 
         this.lives = 5;
-        this.name = isLocal ? "YOU" : "ENEMY";
+        this.name = isAI ? "CPU TANK" : (isLocal ? "YOU" : "ENEMY");
         this.dead = false;
         
         this.ammo = { 'standard': Infinity, 'scatter': 5, 'laser': 3, 'nuke': 0, 'seeker': 3, 'builder': Infinity };
@@ -30,14 +32,23 @@ export class Tank {
         this.onGround = false;
         this.groundStartHeight = 0;
         this.hitFlashTimer = 0;
+
+        // AI Specifics
+        this.aiTimer = 0;
+        this.aiState = 'idle'; // idle, aim, move
+        this.nextMoveTime = 0;
     }
 
     update() {
         if (this.dead) return;
 
-        if (this.isLocal) {
+        // Run physics if it's our player OR an AI bot running locally
+        if (this.isLocal || this.isAI) {
             this.vx = 0;
-            if (state.gameActive) {
+            
+            // --- INPUT HANDLING ---
+            if (!this.isAI && state.gameActive) {
+                // Human Input
                 if (state.keys['ArrowLeft'] || state.keys['a']) this.vx = -4;
                 if (state.keys['ArrowRight'] || state.keys['d']) this.vx = 4;
                 
@@ -47,23 +58,28 @@ export class Tank {
                         this.groundStartHeight = this.y;
                         this.onGround = false;
                     } else if (this.vy < 0) {
-                            if (Math.abs(this.y - this.groundStartHeight) < 200) {
-                                this.vy += JUMP_SUSTAIN; 
-                            }
+                        if (Math.abs(this.y - this.groundStartHeight) < 200) {
+                            this.vy += JUMP_SUSTAIN; 
+                        }
                     }
                 }
                 
                 const trueWorldX = state.mousePos.x / state.camera.zoom + state.camera.x;
                 const trueWorldY = state.mousePos.y / state.camera.zoom + state.camera.y;
                 this.turretAngle = Math.atan2(trueWorldY - (this.y - 10), trueWorldX - this.x) * 180 / Math.PI;
+            } else if (this.isAI && state.gameActive) {
+                // --- AI LOGIC ---
+                this.updateAI();
             }
 
+            // Physics
             this.vy += GRAVITY;
             this.x += this.vx; this.y += this.vy;
             
             this.handleCollisions();
 
-            if (state.socket) {
+            // Network Sync (Only if Human and Multiplayer)
+            if (!this.isAI && state.isMultiplayer && state.socket) {
                 state.socket.emit('updateState', { 
                     x: this.x, y: this.y, 
                     angle: this.angle, 
@@ -73,6 +89,7 @@ export class Tank {
                 });
             }
         } else {
+            // Remote player interpolation
             if(dist(this.x, this.y, this.targetX, this.targetY) > 500) {
                 this.x = this.targetX;
                 this.y = this.targetY;
@@ -83,7 +100,46 @@ export class Tank {
         }
     }
 
+    updateAI() {
+        if (!state.player || state.player.dead) return;
+
+        const distToPlayer = dist(this.x, this.y, state.player.x, state.player.y);
+        
+        // 1. Aiming
+        const dx = state.player.x - this.x;
+        const dy = (state.player.y - 20) - this.y;
+        
+        // Ballistic compensation (very basic: aim higher if further)
+        // Angle to target
+        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        // Gravity comp: aim up (negative degrees) based on distance
+        angle -= (distToPlayer / 40); 
+        
+        // Smooth turret movement
+        this.turretAngle += (angle - this.turretAngle) * 0.1;
+
+        // 2. Firing
+        this.aiTimer++;
+        if (this.aiTimer > 150 && Math.abs(dx) < 1200) { // Fire every ~3 seconds if in range
+             if (Math.random() > 0.3) { // 70% chance to fire
+                 const power = Math.min(distToPlayer / 30, 25); // Charge based on distance
+                 this.fire(power + fxRand(-2, 2)); // Add error
+             }
+             this.aiTimer = 0;
+             // Occasionally jump/move after firing
+             this.nextMoveTime = Date.now() + 500;
+        }
+
+        // 3. Movement (Dumb AI: Move if hurt or random)
+        if (Date.now() < this.nextMoveTime) {
+             // Move towards player or random
+             this.vx = (dx > 0) ? 2 : -2;
+             if (this.onGround && Math.random() < 0.05) this.vy = JUMP_FORCE;
+        }
+    }
+
     handleCollisions() {
+        // ... (Existing code matches provided file exactly, no changes needed inside) ...
         this.x = clamp(this.x, 20, TERRAIN_WIDTH - 20);
         this.onGround = false;
         const floorY = getTerrainHeight(this.x);
@@ -121,7 +177,8 @@ export class Tank {
         const bx = this.x + Math.cos(rad) * 20;
         const by = (this.y - 15) + Math.sin(rad) * 20;
         
-        if (this.isLocal) {
+        // Only emit if this is a human player in multiplayer
+        if (this.isLocal && !this.isAI && state.isMultiplayer) {
             state.socket.emit('fire', { 
                 x: bx, y: by, angle: this.turretAngle, 
                 power: power, type: this.currentWeapon 
@@ -129,13 +186,15 @@ export class Tank {
         }
 
         this.spawnProjectile(bx, by, this.turretAngle, power, this.currentWeapon);
-        if (this.isLocal) this.useAmmo();
+        if (this.isLocal && !this.isAI) this.useAmmo();
     }
 
     spawnProjectile(x, y, angle, power, type) {
-        const p = new Projectile(x, y, angle, power, this.isLocal ? 'player' : 'enemy', type, this.team);
+        // For AI, ownerType is 'enemy'. For Player, 'player'.
+        const owner = this.isAI ? 'enemy' : (this.isLocal ? 'player' : 'enemy');
+        const p = new Projectile(x, y, angle, power, owner, type, this.team);
         state.projectiles.push(p);
-        state.screenShake = 5;
+        if(!this.isAI) state.screenShake = 5;
     }
 
     useAmmo() {
@@ -164,13 +223,39 @@ export class Tank {
 
         if (this.hp <= 0) {
             createExplosion(this.x, this.y, 'nuke');
-            if (this.isLocal) {
-                state.socket.emit('died');
+            
+            if (this.isLocal && !this.isAI) {
+                // Human Player Died
+                if (state.isMultiplayer) state.socket.emit('died');
+                else {
+                    // SP Logic: Game Over immediately or reduce lives?
+                    this.lives--;
+                    this.dead = true;
+                    if(this.lives <= 0) {
+                         // End SP Game
+                         state.spManager.endGame();
+                    } else {
+                         // Respawn logic for SP
+                         setTimeout(() => {
+                             this.dead = false;
+                             this.hp = 100;
+                             this.y = -500; 
+                             this.x = 200;
+                         }, 2000);
+                    }
+                }
+            } else if (this.isAI) {
+                // AI Died
+                this.dead = true;
+                this.lives = 0;
+                // Add Score
+                if (state.spManager) state.spManager.onEnemyKilled(this);
             }
         }
-        updateHUD();
+        if(!this.isAI) updateHUD();
     }
-
+    
+    // ... draw method remains unchanged ...
     draw(ctx) {
         if(this.dead) {
             ctx.save();

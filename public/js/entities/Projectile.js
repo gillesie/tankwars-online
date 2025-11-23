@@ -136,13 +136,30 @@ export class Projectile {
         if (this.type === 'laser') { damage = 30; }
         if (this.type === 'cluster') { radius = 100; damage = 15; } 
         
+        // HIT DETECTION LOGIC
+        const targets = [];
+        
+        // 1. Check Player
         if (state.player && state.player.team !== this.team && !state.player.dead) {
-                if (dist(this.x, this.y, state.player.x, state.player.y) < radius) {
-                    state.player.takeDamage(damage);
+            targets.push(state.player);
+        }
+        
+        // 2. Check Remote Players OR AI Enemies (Stored in remotePlayers in SP)
+        Object.values(state.remotePlayers).forEach(p => {
+             if (p.team !== this.team && !p.dead) targets.push(p);
+        });
+
+        targets.forEach(t => {
+            if (dist(this.x, this.y, t.x, t.y) < radius) {
+                t.takeDamage(damage);
+                
+                // Only send socket event in MP
+                if (state.isMultiplayer && t === state.player) {
                     state.socket.emit('hit', { 
-                        damage: damage, x: state.player.x, y: state.player.y, victimId: state.myId 
+                        damage: damage, x: t.x, y: t.y, victimId: state.myId 
                     });
                 }
-        }
+            }
+        });
     }
 }

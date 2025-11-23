@@ -34,8 +34,10 @@ export class Tank {
         this.hitFlashTimer = 0;
 
         // AI Specifics
+        this.isAI = isAI;
+        this.difficulty = 1; // Default difficulty
         this.aiTimer = 0;
-        this.aiState = 'idle'; // idle, aim, move
+        this.aiState = 'idle'; 
         this.nextMoveTime = 0;
     }
 
@@ -104,37 +106,72 @@ export class Tank {
         if (!state.player || state.player.dead) return;
 
         const distToPlayer = dist(this.x, this.y, state.player.x, state.player.y);
-        
-        // 1. Aiming
         const dx = state.player.x - this.x;
         const dy = (state.player.y - 20) - this.y;
         
-        // Ballistic compensation (very basic: aim higher if further)
-        // Angle to target
-        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
-        // Gravity comp: aim up (negative degrees) based on distance
-        angle -= (distToPlayer / 40); 
+        // --- 1. AIMING LOGIC ---
+        // Calculate direct angle
+        let targetAngle = Math.atan2(dy, dx) * 180 / Math.PI;
         
-        // Smooth turret movement
-        this.turretAngle += (angle - this.turretAngle) * 0.1;
+        // Gravity Compensation (Heuristic)
+        // Adjust aim upward based on distance
+        targetAngle -= (distToPlayer / 45); 
 
-        // 2. Firing
+        // Smooth Turret Movement
+        // Speed increases slightly with difficulty
+        const turnSpeed = 0.05 + (this.difficulty * 0.01); 
+        this.turretAngle += (targetAngle - this.turretAngle) * clamp(turnSpeed, 0.05, 0.3);
+
+        // --- 2. FIRING LOGIC ---
         this.aiTimer++;
-        if (this.aiTimer > 150 && Math.abs(dx) < 1200) { // Fire every ~3 seconds if in range
-             if (Math.random() > 0.3) { // 70% chance to fire
-                 const power = Math.min(distToPlayer / 30, 25); // Charge based on distance
-                 this.fire(power + fxRand(-2, 2)); // Add error
+        
+        // Fire Interval decreases with difficulty (Faster shooting)
+        // Wave 1: ~5 seconds, Wave 10: ~2 seconds
+        const fireInterval = Math.max(60, 150 - (this.difficulty * 8));
+
+        if (this.aiTimer > fireInterval && distToPlayer < 1500) { 
+             // Accuracy: Spread decreases with difficulty
+             const inaccuracy = Math.max(0.2, 4.0 - (this.difficulty * 0.4));
+             
+             // Only fire if roughly facing the target
+             if (Math.abs(targetAngle - this.turretAngle) < 15) {
+                 // Charge power based on distance
+                 const power = Math.min(distToPlayer / 30, 25);
+                 
+                 // Fire with random error based on difficulty
+                 this.fire(power + fxRand(-inaccuracy, inaccuracy));
+                 
+                 this.aiTimer = 0;
+                 // Plan next move after firing
+                 this.nextMoveTime = Date.now() + fxRand(500, 1500);
              }
-             this.aiTimer = 0;
-             // Occasionally jump/move after firing
-             this.nextMoveTime = Date.now() + 500;
         }
 
-        // 3. Movement (Dumb AI: Move if hurt or random)
-        if (Date.now() < this.nextMoveTime) {
-             // Move towards player or random
-             this.vx = (dx > 0) ? 2 : -2;
-             if (this.onGround && Math.random() < 0.05) this.vy = JUMP_FORCE;
+        // --- 3. MOVEMENT LOGIC ---
+        if (Date.now() > this.nextMoveTime) {
+             const optimalRange = 600; // Try to stay at this distance
+             
+             if (distToPlayer < optimalRange - 150) {
+                 // Too close: Back away
+                 this.vx = (dx > 0) ? -2 : 2;
+             } else if (distToPlayer > optimalRange + 150) {
+                 // Too far: Advance
+                 this.vx = (dx > 0) ? 2 : -2;
+             } else {
+                 // Good range: Random strafe or stop
+                 const randMove = Math.random();
+                 if (randMove < 0.3) this.vx = 0;
+                 else this.vx = (Math.random() > 0.5 ? 2 : -2);
+             }
+
+             // Jump logic: Jump over obstacles or erratically
+             // Chance increases with difficulty
+             if (this.onGround && Math.random() < (0.05 + this.difficulty * 0.02)) {
+                 this.vy = -10;
+             }
+             
+             // Reset move timer
+             this.nextMoveTime = Date.now() + fxRand(1000, 3000);
         }
     }
 

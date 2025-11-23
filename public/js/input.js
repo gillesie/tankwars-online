@@ -25,6 +25,9 @@ export function initInput() {
         }
     });
 
+    // In public/js/input.js
+// Replace the mouseup event listener logic (around line 30-58)
+
     state.canvas.addEventListener('mouseup', e => {
         if (e.button === 0 && state.gameActive && state.player && !state.player.dead) {
             if (state.isDrawing) {
@@ -43,9 +46,17 @@ export function initInput() {
                         width: width, height: 20,
                         angle: angle, hp: 200, maxHp: 200, type: 'standard'
                     };
-                    state.socket.emit('createPlatform', newPlat);
+                    
+                    // FIX: Check mode before emitting
+                    if (state.isMultiplayer && state.socket) {
+                        state.socket.emit('createPlatform', newPlat);
+                    } else {
+                        // Single Player: Add directly to local state
+                        state.platforms.push(newPlat);
+                    }
                 }
             } else if (state.isCharging) {
+                // ... existing firing logic ...
                 const duration = Date.now() - state.mousePressedTime;
                 let pwr = Math.min(duration / 40, 25);
                 pwr = Math.max(pwr, 2);

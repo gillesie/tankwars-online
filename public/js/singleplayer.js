@@ -3,7 +3,7 @@ import { Tank } from './entities/Tank.js';
 import { generateTerrain } from './world.js';
 import { startGameClient } from './game.js';
 import { updateHUD, log, updateScoreboard } from './ui.js';
-import { rand } from './utils.js';
+import { rand, fxRand } from './utils.js'; // Added fxRand
 
 export class SinglePlayerManager {
     constructor() {
@@ -55,18 +55,21 @@ export class SinglePlayerManager {
 
     spawnEnemy() {
         const id = `cpu_${Date.now()}_${Math.random()}`;
-        const x = rand(1000, 5000, {val: Math.random()}); // Random spot away from spawn
         
-        const tank = new Tank(false, 2, id, true); // isLocal=false (interpolated physics? No wait, we need local physics)
-        // Correction: We need isLocal=true for physics, but isAI=true to disable inputs.
-        // See Tank.js modifications.
-        tank.isLocal = false; // Actually, in my Tank.js logic: if(isLocal || isAI). So isLocal can be false.
+        // FIX: Use fxRand for proper random distribution
+        const x = fxRand(1000, 5000); 
+        
+        const tank = new Tank(false, 2, id, true); 
+        tank.isLocal = false; 
         tank.isAI = true;
         tank.team = 2;
         tank.x = x;
         tank.y = -500;
         
-        // Difficulty scaling
+        // Set Difficulty based on Wave
+        tank.difficulty = this.wave; // New property
+        
+        // Difficulty scaling for HP
         tank.maxHp = 50 + (this.wave * 10);
         tank.hp = tank.maxHp;
         

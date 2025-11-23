@@ -25,7 +25,12 @@ export function init() {
 export function startGameClient() {
     document.getElementById('mp-lobby-screen').classList.add('hidden');
     document.getElementById('scoreboard').style.display = 'block';
-    document.getElementById('hud-level').innerText = "SECTOR: " + (state.socket.data?.room || "ONLINE");
+    
+    // FIX: Only check socket room if we are in Multiplayer and socket exists
+    if (state.isMultiplayer && state.socket && state.socket.data) {
+        document.getElementById('hud-level').innerText = "SECTOR: " + (state.socket.data.room || "ONLINE");
+    }
+    
     state.gameActive = true;
     log("MISSION START");
 }
@@ -118,9 +123,12 @@ function animate() {
     lastTime = now;
 
     if (state.gameActive && state.player) {
-		if (state.gameMode === 'sp' && state.spManager) {
+        // --- HOOK FOR SP MANAGER ---
+        if (state.gameMode === 'sp' && state.spManager) {
             state.spManager.update();
         }
+        // ---------------------------
+
         state.player.update();
         Object.values(state.remotePlayers).forEach(p => p.update());
         state.projectiles.forEach(p => p.update());

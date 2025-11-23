@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artillery Blitz 6.0: Modular</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script type="module" src="js/main.js"></script>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="hud-top">
+            <div class="stat-box" id="hp-box">
+                <span class="stat-label">ARMOR INTEGRITY</span>
+                <div class="bar-container"><div class="bar-fill hp-fill" id="hud-hp"></div></div>
+                <span class="stat-value" id="hud-hp-text">100%</span>
+                <div class="bar-container" style="height: 4px; margin-top: 2px;"><div class="bar-fill shield-fill" id="hud-shield"></div></div>
+            </div>
+
+            <div class="stat-box" style="text-align: center;">
+                <span class="stat-label" id="level-label">MISSION STATUS</span>
+                <span class="stat-value" id="hud-level" style="font-size: 24px;">ONLINE PVP</span>
+                <div style="color: #ff0; font-weight: bold; margin-top: 5px;">LIVES: <span id="hud-lives">5</span></div>
+            </div>
+
+            <div class="stat-box weapon-selector">
+                <span class="stat-label">WEAPON SYSTEMS</span>
+                <div class="weapon-grid">
+                    <div class="weapon-btn active" id="btn-standard" onclick="selectWeapon('standard')"><span class="w-icon">●</span><span>STD</span><span id="ammo-standard">∞</span></div>
+                    <div class="weapon-btn" id="btn-scatter" onclick="selectWeapon('scatter')"><span class="w-icon">⁙</span><span>SCTR</span><span id="ammo-scatter">0</span></div>
+                    <div class="weapon-btn" id="btn-laser" onclick="selectWeapon('laser')"><span class="w-icon">━</span><span>LASR</span><span id="ammo-laser">0</span></div>
+                    <div class="weapon-btn" id="btn-seeker" onclick="selectWeapon('seeker')"><span class="w-icon">◎</span><span>SEEK</span><span id="ammo-seeker">0</span></div>
+                    <div class="weapon-btn" id="btn-nuke" onclick="selectWeapon('nuke')"><span class="w-icon">☢</span><span>NUKE</span><span id="ammo-nuke">0</span></div>
+                    <div class="weapon-btn builder" id="btn-builder" onclick="selectWeapon('builder')"><span class="w-icon">⚒</span><span>BUILD</span><span id="ammo-builder">∞</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="power-overlay">
+            <span class="stat-label">SHOT POWER</span>
+            <div class="bar-container"><div class="bar-fill power-fill" id="hud-power" style="width: 0%;"></div></div>
+        </div>
+
+        <div id="battle-log"></div>
+
+        <div id="minimap-container">
+            <canvas id="minimapCanvas"></canvas>
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <h1>NEON BLITZ</h1>
+        <h2>TACTICAL CONFIGURATION</h2>
+        <div class="config-panel">
+            <div class="config-item">
+                <label>SERVER REGION</label>
+                <select disabled><option>LOCALHOST:3000 (Global)</option></select>
+            </div>
+            <div class="config-item">
+                <label>STARTING ARSENAL</label>
+                <select id="cfg-weapons">
+                    <option value="standard" selected>STANDARD ISSUE</option>
+                    <option value="loaded">FULLY LOADED (Test Mode)</option>
+                </select>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button class="secondary" onclick="window.initGame()">DEPLOY ONLINE</button>
+        </div>
+        <p style="margin-top: 20px; font-size: 12px;">
+            CONTROLS: [A/D] Move • [SPACE] Jump (Hold) • [MOUSE] Aim/Fire • [SCROLL] Zoom<br>
+            BUILDER: Select Tool -> Drag to draw platform.
+        </p>
+    </div>
+
+    <div id="mp-lobby-screen" class="hidden">
+        <h1>GLOBAL LOBBY</h1>
+        <div id="join-area" class="lobby-container">
+            <div class="lobby-row">
+                <input id="inp-name" class="lobby-input" type="text" placeholder="PILOT NAME" maxlength="12">
+                <input id="inp-room" class="lobby-input" type="text" placeholder="ROOM CODE (e.g. WARZONE)" maxlength="10">
+            </div>
+            <div class="lobby-row">
+                <button id="btn-team-1" class="team-select-btn" onclick="window.setTeam(1)">JOIN BLUE</button>
+                <button id="btn-team-2" class="team-select-btn" onclick="window.setTeam(2)">JOIN RED</button>
+            </div>
+            <button onclick="window.joinGame()" style="margin-top: 10px; width: 100%;">CONNECT TO LOBBY</button>
+            <h3 style="margin-top:20px; border-bottom: 1px solid #0ff;">ACTIVE SECTORS</h3>
+            <div id="room-list-container" class="room-list">
+                <div style="text-align: center; color: #555;">SCANNING FREQUENCIES...</div>
+            </div>
+        </div>
+
+        <div id="waiting-area">
+            <h2>DEPLOYMENT STANDBY</h2>
+            <div id="waiting-player-list">Waiting for pilots...</div>
+            <div id="lobby-status-msg"></div>
+            <button id="btn-start-game" class="hidden" onclick="window.requestStart()" style="border-color: #0f0; color: #0f0;">INITIATE BATTLE</button>
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="scoreboard">
+            <div class="sb-header">BLUE TEAM <span id="sb-count-1">0</span></div>
+            <div id="sb-list-1"></div>
+            <div class="sb-header" style="margin-top:10px; color: #f33;">RED TEAM <span id="sb-count-2">0</span></div>
+            <div id="sb-list-2"></div>
+        </div>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h1 style="-webkit-text-fill-color: #f00; text-shadow: 0 0 30px #f00;">MISSION TERMINATED</h1>
+        <h2 id="go-score">WINNER: ???</h2>
+        <button onclick="location.reload()">RETURN TO BASE</button>
+    </div>
+</body>
+</html>

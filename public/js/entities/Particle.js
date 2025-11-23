@@ -1,4 +1,5 @@
-import { fxRand, GRAVITY } from '../utils.js';
+import { fxRand } from '../utils.js';
+import { GRAVITY } from '../config.js'; // FIXED: Importing from correct file
 
 export class Particle {
     constructor(x, y, color, type) {

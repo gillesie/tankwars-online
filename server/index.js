@@ -59,6 +59,7 @@ io.on('connection', (socket) => {
     socket.on('hit', (data) => forwardToRoom('broadcastHit', data));
     socket.on('createPlatform', (data) => forwardToRoom('createPlatform', data));
     socket.on('platformDestroyed', (id) => forwardToRoom('platformDestroyed', id));
+    socket.on('blockDestroyed', (id) => forwardToRoom('blockDestroyed', id)); // NEW
     socket.on('platformDamage', (data) => forwardToRoom('broadcastPlatformDamage', data));
     socket.on('planeHit', (data) => forwardToRoom('handlePlaneHit', data));
     socket.on('died', () => forwardToRoom('handleDeath'));

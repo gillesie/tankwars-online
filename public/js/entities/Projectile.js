@@ -80,7 +80,8 @@ export class Projectile {
                 this.explode(); return; 
             }
             
-            if (this.age > 10 || this.ownerType !== 'player') {
+            if (this.age > 2) { // Allow leaving barrel
+                // 1. Platform Collision
                 for (let p of state.platforms) {
                     const dx = this.x - p.x;
                     const dy = this.y - p.y;
@@ -106,6 +107,29 @@ export class Projectile {
                                     createExplosion(p.x + p.width/2, p.y, 'standard');
                                     createDebris(p.x, p.y, p.width, p.height);
                                     state.platforms = state.platforms.filter(plat => plat.id !== p.id);
+                                }
+                            }
+                        }
+                        return;
+                    }
+                }
+
+                // 2. Block Collision
+                for (let b of state.blocks) {
+                    if (this.x >= b.x && this.x <= b.x + b.size &&
+                        this.y >= b.y && this.y <= b.y + b.size) {
+                        this.explode();
+                        if (this.ownerType === 'player' || this.ownerType === 'enemy') {
+                            const dmg = (this.type === 'nuke') ? 100 : 30;
+                            b.hp -= dmg;
+                            createExplosion(this.x, this.y, 'standard');
+                            
+                            if (b.hp <= 0) {
+                                if (state.isMultiplayer && state.socket) {
+                                    state.socket.emit('blockDestroyed', b.id);
+                                } else {
+                                    state.blocks = state.blocks.filter(block => block.id !== b.id);
+                                    createDebris(b.x, b.y, b.size, b.size);
                                 }
                             }
                         }

@@ -85,7 +85,8 @@ function setupGameListeners() {
         hpBox.className = 'stat-box'; 
         hpBox.classList.add(state.myTeam === 1 ? 'team-1-hud' : 'team-2-hud');
 
-        generateTerrain(data.destroyedPlatforms || []);
+        // Generate Terrain and Blocks (filtering destroyed ones)
+        generateTerrain(data.destroyedPlatforms || [], data.destroyedBlocks || []);
         
         if (data.dynamicPlatforms) {
             data.dynamicPlatforms.forEach(p => state.platforms.push(p));
@@ -156,6 +157,16 @@ function setupGameListeners() {
             createExplosion(p.x + p.width/2, p.y, 'standard');
             createDebris(p.x, p.y, p.width, p.height);
             state.platforms = state.platforms.filter(x => x.id !== id);
+        }
+    });
+
+    socket.on('blockDestroyed', (id) => {
+        const idx = state.blocks.findIndex(b => b.id === id);
+        if(idx !== -1) {
+            const b = state.blocks[idx];
+            createExplosion(b.x + b.size/2, b.y + b.size/2, 'standard');
+            createDebris(b.x, b.y, b.size, b.size);
+            state.blocks.splice(idx, 1);
         }
     });
     

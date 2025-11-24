@@ -1,10 +1,12 @@
 import { state } from './state.js';
 import { TERRAIN_WIDTH, SEGMENT_SIZE, WORLD_HEIGHT } from './config.js';
 import { rand, seededRandom } from './utils.js';
+import { Block } from './entities/Block.js';
 
-export function generateTerrain(destroyedIds = []) {
+export function generateTerrain(destroyedPlatformIds = [], destroyedBlockIds = []) {
     state.terrainPoints.length = 0;
     state.platforms.length = 0;
+    state.blocks.length = 0;
     
     const jaggedness = 1.1;
     const amplitude = 150;
@@ -27,7 +29,7 @@ export function generateTerrain(destroyedIds = []) {
         
         const id = `static_${i}`;
         
-        if (!destroyedIds.includes(id)) {
+        if (!destroyedPlatformIds.includes(id)) {
             const isUnbreakable = rand(0, 1, state.seed) > 0.8;
             state.platforms.push({ 
                 id: id,
@@ -41,6 +43,35 @@ export function generateTerrain(destroyedIds = []) {
         
         currentX = x + w;
         if (currentX > TERRAIN_WIDTH - 500) break;
+    }
+    
+    generateBlocks(destroyedBlockIds);
+}
+
+function generateBlocks(destroyedBlockIds) {
+    const blockSize = 30;
+    // Create a few "forts" or piles
+    const pileCount = 5;
+    
+    for(let i=0; i<pileCount; i++) {
+        const pileX = rand(500, TERRAIN_WIDTH - 500, state.seed);
+        const width = Math.floor(rand(2, 5, state.seed));
+        const height = Math.floor(rand(3, 8, state.seed));
+        
+        // We stack them up high so they fall into place
+        const startY = -1000; 
+
+        for(let bx = 0; bx < width; bx++) {
+            for(let by = 0; by < height; by++) {
+                const id = `blk_p${i}_${bx}_${by}`;
+                if (destroyedBlockIds.includes(id)) continue;
+
+                const x = pileX + (bx * blockSize);
+                const y = startY + (by * blockSize); // Start high
+                
+                state.blocks.push(new Block(id, x, y, blockSize));
+            }
+        }
     }
 }
 

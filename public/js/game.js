@@ -115,10 +115,18 @@ function drawMinimap() {
         }
     });
 
-    // Show Projectiles on Minimap
+    // Show Projectiles on Minimap (Fixed: Only show active)
     ctx.fillStyle = '#ff0';
     state.projectiles.forEach(p => {
-        ctx.fillRect(p.x * scaleX, p.y * scaleY, 2, 2);
+        if (p.active) {
+            ctx.fillRect(p.x * scaleX, p.y * scaleY, 2, 2);
+        }
+    });
+
+    // Show Blocks on Minimap
+    ctx.fillStyle = '#667';
+    state.blocks.forEach(b => {
+        ctx.fillRect(b.x * scaleX, b.y * scaleY, 2, 2);
     });
 
     ctx.fillStyle = '#fff';
@@ -146,10 +154,18 @@ function animate() {
 
         state.player.update();
         Object.values(state.remotePlayers).forEach(p => p.update());
+        
+        // Update Projectiles and Filter Inactive
         state.projectiles.forEach(p => p.update());
+        state.projectiles = state.projectiles.filter(p => p.active);
+
         state.particles.forEach(p => p.update());
         state.crates.forEach(c => c.update());
         state.planes.forEach(p => p.update());
+        
+        // Update Blocks
+        state.blocks.forEach(b => b.update());
+
         state.floatingTexts.forEach(t => t.update());
         state.floatingTexts = state.floatingTexts.filter(t => t.life > 0);
 
@@ -182,6 +198,9 @@ function animate() {
 
     drawTerrain(ctx);
     
+    // Draw Blocks
+    state.blocks.forEach(b => b.draw(ctx));
+
     if (state.isDrawing && state.gameActive) {
         const trueX = state.mousePos.x / state.camera.zoom + state.camera.x;
         const trueY = state.mousePos.y / state.camera.zoom + state.camera.y;

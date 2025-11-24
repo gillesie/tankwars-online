@@ -9,6 +9,7 @@ class GameRoom {
         this.planes = [];
         this.dynamicPlatforms = [];
         this.destroyedPlatforms = [];
+        this.destroyedBlocks = []; // NEW: Track destroyed blocks
         this.seed = Math.random();
         this.lastCrate = Date.now();
     }
@@ -48,6 +49,7 @@ class GameRoom {
             planes: this.planes,
             dynamicPlatforms: this.dynamicPlatforms,
             destroyedPlatforms: this.destroyedPlatforms,
+            destroyedBlocks: this.destroyedBlocks, // NEW
             players: this.players 
         });
 
@@ -114,6 +116,14 @@ class GameRoom {
             this.dynamicPlatforms = this.dynamicPlatforms.filter(p => p.id !== id);
         }
         this.io.to(this.roomId).emit('platformDestroyed', id);
+    }
+
+    // NEW
+    blockDestroyed(socket, id) {
+        if (!this.destroyedBlocks.includes(id)) {
+            this.destroyedBlocks.push(id);
+            this.io.to(this.roomId).emit('blockDestroyed', id);
+        }
     }
 
     broadcastPlatformDamage(socket, data) {

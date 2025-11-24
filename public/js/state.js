@@ -19,6 +19,7 @@ export const state = {
     seed: { val: 1 },
     terrainPoints: [],
     platforms: [],
+    blocks: [], // NEW: Array to store Block entities
     wind: 0,
     screenShake: 0,
     

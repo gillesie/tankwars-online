@@ -50,26 +50,48 @@ export function generateTerrain(destroyedPlatformIds = [], destroyedBlockIds = [
 
 function generateBlocks(destroyedBlockIds) {
     const blockSize = 30;
-    // Create a few "forts" or piles
-    const pileCount = 5;
+    const structuresCount = 6;
     
-    for(let i=0; i<pileCount; i++) {
-        const pileX = rand(500, TERRAIN_WIDTH - 500, state.seed);
-        const width = Math.floor(rand(2, 5, state.seed));
-        const height = Math.floor(rand(3, 8, state.seed));
+    for(let i=0; i<structuresCount; i++) {
+        const centerX = rand(600, TERRAIN_WIDTH - 600, state.seed);
+        const type = rand(0, 1, state.seed) > 0.5 ? 'pyramid' : 'tower';
         
-        // We stack them up high so they fall into place
-        const startY = -1000; 
+        // Start high up, let gravity settle them
+        const startY = -1200; 
 
-        for(let bx = 0; bx < width; bx++) {
-            for(let by = 0; by < height; by++) {
-                const id = `blk_p${i}_${bx}_${by}`;
-                if (destroyedBlockIds.includes(id)) continue;
-
-                const x = pileX + (bx * blockSize);
-                const y = startY + (by * blockSize); // Start high
+        if (type === 'pyramid') {
+            const baseSize = Math.floor(rand(4, 7, state.seed));
+            for(let row=0; row<baseSize; row++) {
+                const cols = baseSize - row;
+                // Center the row
+                const rowWidth = cols * blockSize;
+                const startRowX = centerX - rowWidth / 2;
                 
-                state.blocks.push(new Block(id, x, y, blockSize));
+                for(let col=0; col<cols; col++) {
+                    const id = `blk_p${i}_r${row}_c${col}`;
+                    if (destroyedBlockIds.includes(id)) continue;
+                    
+                    const x = startRowX + col * blockSize;
+                    const y = startY - (row * blockSize); 
+                    state.blocks.push(new Block(id, x, y, blockSize));
+                }
+            }
+        } else {
+            // Irregular Mountain/Tower
+            const width = Math.floor(rand(3, 5, state.seed));
+            const maxHeight = Math.floor(rand(5, 12, state.seed));
+            
+            for(let col=0; col<width; col++) {
+                // Varying height per column for "mountain" look
+                const colHeight = Math.floor(rand(maxHeight/2, maxHeight, state.seed));
+                for(let row=0; row<colHeight; row++) {
+                    const id = `blk_t${i}_c${col}_r${row}`;
+                    if (destroyedBlockIds.includes(id)) continue;
+                    
+                    const x = centerX + (col * blockSize);
+                    const y = startY - (row * blockSize);
+                    state.blocks.push(new Block(id, x, y, blockSize));
+                }
             }
         }
     }

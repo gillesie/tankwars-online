@@ -33,24 +33,38 @@ export class Crate {
         createExplosion(this.x, this.y, 'heal');
     }
     applyEffect(tank) {
-        // --- NEW: UI Feedback ---
         log(`ACQUIRED: ${this.type.toUpperCase()}`);
         
-        // Blink weapon icon if it's ammo or weapon
+        // --- FIX: Unlock weapon immediately so blink works ---
+        if (state.gameMode === 'campaign' && this.type !== 'repair' && this.type !== 'extra_life' && this.type !== 'shield') {
+            if (!state.unlockedWeapons.includes(this.type)) {
+                state.unlockedWeapons.push(this.type);
+                // Force HUD update to remove 'locked' class before blink
+                updateHUD();
+            }
+        }
+
+        // Blink logic
         if (this.type !== 'repair' && this.type !== 'extra_life' && this.type !== 'shield') {
             blinkWeapon(this.type);
         }
-        // Specific feedback for extra life
-        if (this.type === 'extra_life') blinkWeapon('standard'); // Fallback or distinct effect
+        if (this.type === 'extra_life') blinkWeapon('standard'); 
 
         switch(this.type) {
             case 'repair': tank.hp = Math.min(tank.maxHp, tank.hp + 30); break;
-            case 'extra_life': tank.lives++; break; // NEW
-            case 'ammo': tank.ammo['standard'] = Infinity; tank.ammo['scatter']+=5; tank.ammo['laser']+=3; tank.ammo['seeker']+=3; blinkWeapon('standard'); break;
+            case 'extra_life': tank.lives++; break;
+            case 'ammo': 
+                tank.ammo['standard'] = Infinity; 
+                tank.ammo['scatter']+=5; 
+                tank.ammo['laser']+=3; 
+                tank.ammo['seeker']+=3; 
+                blinkWeapon('standard'); 
+                break;
             case 'shield': tank.shield = 50; break;
             case 'scatter': tank.ammo['scatter'] += 10; break;
             case 'seeker': tank.ammo['seeker'] += 5; break;
             case 'nuke': tank.ammo['nuke'] += 1; break;
+            case 'builder': tank.ammo['builder'] += 5; break; // NEW: Add builder ammo
         }
         updateHUD();
     }
@@ -62,17 +76,17 @@ export class Crate {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'; ctx.beginPath(); ctx.arc(0, -45, 20, Math.PI, 0); ctx.fill();
         }
         
-        // --- NEW: Crate Colors ---
-        ctx.fillStyle = '#000'; // Default backing
-        ctx.strokeStyle = '#0f0'; // Default stroke
+        // Crate Colors
+        ctx.fillStyle = '#000'; 
         
-        let color = '#0f0'; // Repair (Green)
-        if (this.type === 'extra_life') color = '#000'; 
+        let color = '#0f0'; // Repair
+        if (this.type === 'extra_life') color = '#fff'; // Changed to white/black
         else if (this.type === 'ammo') color = '#0ff';
         else if (this.type === 'shield') color = '#fff';
         else if (this.type === 'scatter') color = '#f60';
         else if (this.type === 'nuke') color = '#ff0';
         else if (this.type === 'seeker') color = '#f0f';
+        else if (this.type === 'builder') color = '#a0a'; // Purple for builder
 
         ctx.strokeStyle = color;
         ctx.shadowColor = color;
@@ -80,8 +94,6 @@ export class Crate {
         
         if (this.type === 'extra_life') {
             ctx.fillStyle = '#333';
-            ctx.strokeStyle = '#fff';
-            ctx.shadowColor = '#fff';
         }
 
         ctx.lineWidth = 2;
@@ -97,6 +109,7 @@ export class Crate {
         if(this.type === 'seeker') icon = 'S';
         if(this.type === 'shield') icon = 'O';
         if(this.type === 'extra_life') { icon = '♥'; ctx.fillStyle = '#f00'; }
+        if(this.type === 'builder') icon = '⚒';
         
         ctx.fillText(icon, 0, 5);
         ctx.restore();

@@ -23,6 +23,14 @@ window.initSinglePlayer = function() {
     const sp = new SinglePlayerManager();
     sp.init();
 };
+// NEW FUNCTION
+window.initCampaign = function() {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('mp-lobby-screen').classList.add('hidden');
+    
+    const cm = new CampaignManager();
+    cm.init();
+};
 
 window.setTeam = function(t) {
     state.selectedTeam = t;
@@ -51,6 +59,7 @@ window.selectWeapon = function(type) {
         }
     }
 };
+
 
 // Start
 init();

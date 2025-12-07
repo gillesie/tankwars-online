@@ -58,9 +58,15 @@
         
         <input type="hidden" id="cfg-weapons" value="standard">
         
+		<div id="world-map-container" class="hidden" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:auto; background:#000; z-index:20;">
+        <canvas id="world-map-canvas"></canvas>
+        <button onclick="location.reload()" style="position:absolute; bottom:20px; right:20px; z-index:21;">EXIT TO MENU</button>
+    </div>
+		
         <div class="btn-group">
 			<button class="secondary" onclick="window.initGame()">MULTIPLAYER</button>
-			<button onclick="window.initSinglePlayer()">SINGLE PLAYER</button>
+			<button onclick="window.initSinglePlayer()">SINGLE PLAYER SURVIVAL</button>
+			<button onclick="window.initCampaign()" style="border-color: #ff0; color: #ff0;">SINGLE PLAYER WORLD CAMPAIGN</button>
 		</div>
         <p style="margin-top: 20px; font-size: 12px;">
             CONTROLS: [A/D] Move • [SPACE] Jump (Hold) • [MOUSE] Aim/Fire • [SCROLL] Zoom<br>

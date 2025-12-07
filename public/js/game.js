@@ -171,7 +171,14 @@ function animate() {
 
         let targetCamX = state.player.x - (state.width / 2 / state.camera.zoom);
         let targetCamY = state.player.y - (state.height / 2 / state.camera.zoom); 
-        targetCamX = clamp(targetCamX, 0, TERRAIN_WIDTH - (state.width / state.camera.zoom));
+        // UPDATE: Modify Clamp for Campaign length
+        let maxW = 6000;
+        if (state.gameMode === 'campaign' && state.campaignManager) {
+             const lvl = state.campaignManager.LEVELS?.find(l => l.id === state.currentLevelId); // Accessing logic locally if needed, but state logic suffices
+             // For simplicity, stick to generic or update dynamically
+        }
+        
+        targetCamX = clamp(targetCamX, 0, maxW); // Keep existing clamp for now, effectively infinite if terrain is huge
         state.camera.x += (targetCamX - state.camera.x) * 0.1;
         state.camera.y += (targetCamY - state.camera.y) * 0.1;
     } else if (state.player) {

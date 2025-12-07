@@ -19,7 +19,7 @@ export const state = {
     seed: { val: 1 },
     terrainPoints: [],
     platforms: [],
-    blocks: [], // NEW: Array to store Block entities
+    blocks: [],
     wind: 0,
     screenShake: 0,
     
@@ -46,9 +46,14 @@ export const state = {
     // Config
     gameConfig: { unlockWeapons: false },
 	
-	//--- NEW SINGLE PLAYER STATE ---
-	gameMode: 'menu', // 'menu', 'mp', 'sp'
+	// Game Modes
+	gameMode: 'menu', // 'menu', 'mp', 'sp', 'campaign'
     wave: 1,
     enemiesKilled: 0,
-    spManager: null // Reference to the single player logic
+    spManager: null,
+    
+    // --- NEW CAMPAIGN STATE ---
+    campaignManager: null,
+    campaignProgress: 1, // Current unlocked level
+    currentLevelId: 0
 };

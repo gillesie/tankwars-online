@@ -176,3 +176,88 @@ export function drawTerrain(ctx) {
 
     ctx.restore();
 }
+
+// --- NEW FUNCTION FOR CAMPAIGN ---
+export function generateCampaignTerrain(levelData) {
+    state.terrainPoints.length = 0;
+    state.platforms.length = 0;
+    state.blocks.length = 0;
+    
+    const length = levelData.length || 5000;
+    // Overwrite config width temporarily for this session (handled by logic using length)
+    
+    // 1. Generate Ground
+    // Linear levels are flatter, with pits
+    for (let x = 0; x <= length + 1000; x += SEGMENT_SIZE) {
+        let y = WORLD_HEIGHT * 0.7;
+        
+        // Add Pits (except at start and end)
+        if (x > 500 && x < length - 500) {
+             // Procedural pits
+             if (Math.sin(x * 0.005) > 0.8) {
+                 y += 600; // Pit
+             } else {
+                 y += Math.sin(x * 0.01) * 50; // Gentle hills
+             }
+        }
+        
+        // Boss Arena needs flat ground
+        if (levelData.type === 'boss') y = WORLD_HEIGHT * 0.8;
+
+        state.terrainPoints.push({x, y});
+    }
+
+    // 2. Generate Platforms for jumping
+    if (levelData.type !== 'boss') {
+        let currentX = 600;
+        while(currentX < length - 600) {
+            const gap = rand(200, 400, state.seed);
+            const w = rand(150, 400, state.seed);
+            const h = rand(100, 400, state.seed); // Height from ground
+            
+            // Determine ground height at this X
+            const groundY = getTerrainHeight(currentX);
+            
+            if (groundY > WORLD_HEIGHT) { // We are over a pit
+                // Must place platform to cross
+                state.platforms.push({
+                    id: `plat_${currentX}`, x: currentX, y: WORLD_HEIGHT * 0.7 - 50,
+                    width: w, height: 20, angle: 0, hp: Infinity, maxHp: 200, type: 'unbreakable'
+                });
+            } else {
+                // Random platform for elevation
+                if (Math.random() > 0.5) {
+                    state.platforms.push({
+                         id: `plat_${currentX}`, x: currentX, y: groundY - h,
+                         width: w, height: 20, angle: rand(-10, 10, state.seed), 
+                         hp: 200, maxHp: 200, type: 'standard'
+                    });
+                }
+            }
+            currentX += w + gap;
+        }
+    } else {
+        // Boss Arena Platforms (Verticality)
+        for(let i=0; i<10; i++) {
+            state.platforms.push({
+                id: `boss_p_${i}`,
+                x: rand(500, length-500, state.seed),
+                y: WORLD_HEIGHT * 0.8 - rand(200, 800, state.seed),
+                width: 200, height: 20, angle: 0, hp: Infinity, maxHp: 200, type: 'unbreakable'
+            });
+        }
+    }
+
+    // 3. Generate End Bunker / Base
+    const endX = length - 200;
+    const endY = getTerrainHeight(endX);
+    // Build a simple structure
+    for(let r=0; r<6; r++) {
+        for(let c=0; c<4; c++) {
+            state.blocks.push(new Block(`base_${r}_${c}`, endX + (c*30), endY - 30 - (r*30), 30));
+        }
+    }
+}
+
+// Ensure the existing functions are still exported as before
+export { generateTerrain, getTerrainHeight, drawTerrain };

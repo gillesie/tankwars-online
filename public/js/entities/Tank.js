@@ -46,15 +46,19 @@ export class Tank {
         this.isAI = isAI;
         this.difficulty = 1;
         this.aiTimer = 0;
-        this.aiState = 'idle'; 
         this.nextMoveTime = 0;
+        
+        // --- AI BEHAVIORS ---
+        this.behavior = 'chase'; // 'chase', 'static', 'patrol', 'boss'
+        this.patrolStart = 0;
+        this.patrolDir = 1;
     }
 
     update() {
         if (this.dead) return;
 
         if (this.isLocal || this.isAI) {
-            // Fix: Only reset velocity for human players
+            // Fix: Only reset velocity for human players or non-patrol AI
             if (!this.isAI) {
                 this.vx = 0;
             }
@@ -121,18 +125,71 @@ export class Tank {
         this.turretAngle += (targetAngle - this.turretAngle) * clamp(turnSpeed, 0.05, 0.3);
 
         this.aiTimer++;
-        const fireInterval = Math.max(60, 150 - (this.difficulty * 8));
+        
+        // --- FIRE LOGIC ---
+        // Base fire interval calculation
+        let fireInterval = Math.max(60, 150 - (this.difficulty * 8));
+        
+        // Modify interval based on behavior
+        if (this.behavior === 'boss') fireInterval = 40; // Rapid fire
+        if (this.behavior === 'static') fireInterval = 120; // Slower reload for turrets
 
         if (this.aiTimer > fireInterval && distToPlayer < 1500) { 
              const inaccuracy = Math.max(0.2, 4.0 - (this.difficulty * 0.4));
-             if (Math.abs(targetAngle - this.turretAngle) < 15) {
+             if (Math.abs(targetAngle - this.turretAngle) < 20) {
                  const power = Math.min(distToPlayer / 30, 25);
+                 
+                 // Boss Special Weapon Swap
+                 if (this.behavior === 'boss') {
+                     // 30% chance to use special weapon
+                     this.currentWeapon = Math.random() > 0.7 ? 'nuke' : (Math.random() > 0.5 ? 'scatter' : 'standard');
+                 }
+
                  this.fire(power + fxRand(-inaccuracy, inaccuracy));
                  this.aiTimer = 0;
                  this.nextMoveTime = Date.now() + fxRand(500, 1500);
+                 
+                 // Reset Boss Weapon
+                 if(this.behavior === 'boss') this.currentWeapon = 'standard';
              }
         }
 
+        // --- MOVEMENT LOGIC ---
+        
+        // 1. Static (Turret)
+        if (this.behavior === 'static') {
+            this.vx = 0;
+            return;
+        }
+
+        // 2. Patrol (Platformer Enemy)
+        if (this.behavior === 'patrol') {
+             if (this.patrolStart === 0) this.patrolStart = this.x;
+             this.vx = 2 * this.patrolDir;
+             
+             // Patrol range check
+             if (Math.abs(this.x - this.patrolStart) > 300) {
+                 this.patrolDir *= -1;
+                 // Reset start slightly to prevent getting stuck if pushed
+                 this.patrolStart = this.x; 
+             }
+             return;
+        }
+
+        // 3. Boss Behavior
+        if (this.behavior === 'boss') {
+            if (Date.now() > this.nextMoveTime) {
+                // Slow, heavy movements towards player
+                this.vx = (dx > 0) ? 1 : -1;
+                
+                // Big jumps
+                if (this.onGround) this.vy = -15; 
+                this.nextMoveTime = Date.now() + 2000;
+            }
+            return;
+        }
+
+        // 4. Default Chase Behavior (Standard AI)
         if (Date.now() > this.nextMoveTime) {
              const optimalRange = 600; 
              if (distToPlayer < optimalRange - 150) this.vx = (dx > 0) ? -2 : 2;
@@ -150,7 +207,12 @@ export class Tank {
     }
 
     handleCollisions() {
-        this.x = clamp(this.x, 20, TERRAIN_WIDTH - 20);
+        // Updated clamp to support potentially longer Campaign levels
+        // If state.campaignManager exists, we could check level length, 
+        // but typically clamping to a large enough world width is fine.
+        const worldLimit = (state.gameMode === 'campaign') ? 10000 : TERRAIN_WIDTH;
+        
+        this.x = clamp(this.x, 20, worldLimit - 20);
         this.onGround = false;
         const floorY = getTerrainHeight(this.x);
         
@@ -180,8 +242,7 @@ export class Tank {
             }
         });
 
-        // Block Collision (FIXED)
-        // Tank Hitbox approx: x-15 to x+15, y-15 to y
+        // Block Collision
         const tLeft = this.x - 12; 
         const tRight = this.x + 12;
         const tTop = this.y - 20;
@@ -284,7 +345,12 @@ export class Tank {
                     this.lives--;
                     this.dead = true;
                     if(this.lives <= 0) {
-                         state.spManager.endGame();
+                        // Check manager based on mode
+                         if(state.gameMode === 'sp' && state.spManager) state.spManager.endGame();
+                         else if(state.gameMode === 'campaign') {
+                             // Simple reload for campaign fail
+                             setTimeout(() => location.reload(), 2000);
+                         }
                     } else {
                          setTimeout(() => {
                              this.dead = false;
@@ -297,7 +363,7 @@ export class Tank {
             } else if (this.isAI) {
                 this.dead = true;
                 this.lives = 0;
-                if (state.spManager) state.spManager.onEnemyKilled(this);
+                if (state.gameMode === 'sp' && state.spManager) state.spManager.onEnemyKilled(this);
             }
         }
         if(!this.isAI) updateHUD();
@@ -331,9 +397,6 @@ export class Tank {
         const img = (this.team === 1) ? blueImg : redImg;
         
         // Draw Image centered (scaled down from 100x60 to 40x24 approx)
-        // Original pivot was at bottom center (x, y). 
-        // We shift drawing up by height to align tracks with (0,0)
-        // 36 width, 22 height keeps roughly the proportions
         ctx.drawImage(img, -18, -22, 36, 22);
 
         if (this.shield > 0) {
@@ -351,7 +414,6 @@ export class Tank {
         ctx.restore();
 
         // --- DRAW TURRET (Aim Indicator) ---
-        // We keep this so players know where they are shooting.
         ctx.save();
         ctx.translate(this.x, this.y - 7); // Turret pivot point
         ctx.rotate(this.turretAngle * Math.PI / 180);
@@ -360,7 +422,6 @@ export class Tank {
         ctx.shadowColor = this.team === 1 ? '#0ff' : '#f00';
         ctx.fillStyle = this.team === 1 ? '#0ff' : '#f00';
         
-        // Draw a simpler barrel line to overlap the SVG's static barrel
         ctx.fillRect(0, -2, 25, 4);
         
         ctx.restore();

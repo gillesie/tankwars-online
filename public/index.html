@@ -52,17 +52,17 @@
         </div>
     </div>
 
+    <div id="world-map-container" class="hidden" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:auto; background:#000; z-index:20;">
+        <canvas id="world-map-canvas"></canvas>
+        <button onclick="location.reload()" style="position:absolute; bottom:20px; right:20px; z-index:21;">EXIT TO MENU</button>
+    </div>
+
     <div id="start-screen">
         <h1>NEON BLITZ</h1>
         <h2>TACTICAL CONFIGURATION</h2>
         
         <input type="hidden" id="cfg-weapons" value="standard">
         
-		<div id="world-map-container" class="hidden" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:auto; background:#000; z-index:20;">
-        <canvas id="world-map-canvas"></canvas>
-        <button onclick="location.reload()" style="position:absolute; bottom:20px; right:20px; z-index:21;">EXIT TO MENU</button>
-    </div>
-		
         <div class="btn-group">
 			<button class="secondary" onclick="window.initGame()">MULTIPLAYER</button>
 			<button onclick="window.initSinglePlayer()">SINGLE PLAYER SURVIVAL</button>

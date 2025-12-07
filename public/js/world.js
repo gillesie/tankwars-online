@@ -184,10 +184,8 @@ export function generateCampaignTerrain(levelData) {
     state.blocks.length = 0;
     
     const length = levelData.length || 5000;
-    // Overwrite config width temporarily for this session (handled by logic using length)
     
     // 1. Generate Ground
-    // Linear levels are flatter, with pits
     for (let x = 0; x <= length + 1000; x += SEGMENT_SIZE) {
         let y = WORLD_HEIGHT * 0.7;
         
@@ -258,6 +256,3 @@ export function generateCampaignTerrain(levelData) {
         }
     }
 }
-
-// Ensure the existing functions are still exported as before
-export { generateTerrain, getTerrainHeight, drawTerrain };

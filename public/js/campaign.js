@@ -10,11 +10,11 @@ import { dist, fxRand } from './utils.js';
 const LEVELS = [
     { id: 1, x: 150, y: 450, name: "NORMANDY BEACH", type: 'linear', difficulty: 1, length: 4000 },
     { id: 2, x: 250, y: 400, name: "PARIS RUINS", type: 'linear', difficulty: 2, length: 5000 },
-    { id: 3, x: 380, y: 350, name: "ALPS PASS", type: 'linear', difficulty: 3, length: 5000 }, // High altitude
+    { id: 3, x: 380, y: 350, name: "ALPS PASS", type: 'linear', difficulty: 3, length: 5000 }, 
     { id: 4, x: 450, y: 280, name: "BERLIN OUTSKIRTS", type: 'linear', difficulty: 4, length: 6000 },
-    { id: 5, x: 550, y: 250, name: "WARSAW GATE", type: 'boss', difficulty: 5, length: 2000 }, // BOSS 1
+    { id: 5, x: 550, y: 250, name: "WARSAW GATE", type: 'boss', difficulty: 5, length: 2000 }, 
     { id: 6, x: 650, y: 220, name: "MINSK FACTORY", type: 'linear', difficulty: 6, length: 6000 },
-    { id: 7, x: 750, y: 180, name: "MOSCOW CITADEL", type: 'boss', difficulty: 8, length: 3000 } // FINAL BOSS
+    { id: 7, x: 750, y: 180, name: "MOSCOW CITADEL", type: 'boss', difficulty: 8, length: 3000 } 
 ];
 
 export class CampaignManager {
@@ -23,6 +23,9 @@ export class CampaignManager {
         this.mapCanvas = document.getElementById('world-map-canvas');
         this.mapCtx = this.mapCanvas.getContext('2d');
         this.levelActive = false;
+        
+        // FIX: Expose levels for game loop access
+        this.LEVELS = LEVELS;
         
         // Listen for map clicks
         this.mapCanvas.addEventListener('click', (e) => this.handleMapClick(e));

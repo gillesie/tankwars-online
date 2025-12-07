@@ -2,8 +2,8 @@ import { init } from './game.js';
 import { connectSocket, joinGame } from './network.js';
 import { state } from './state.js';
 import { updateHUD } from './ui.js';
-// NEW IMPORT
 import { SinglePlayerManager } from './singleplayer.js';
+import { CampaignManager } from './campaign.js'; // FIX: ADDED THIS IMPORT
 
 // Expose global functions for HTML buttons
 window.initGame = function() {
@@ -23,6 +23,7 @@ window.initSinglePlayer = function() {
     const sp = new SinglePlayerManager();
     sp.init();
 };
+
 // NEW FUNCTION
 window.initCampaign = function() {
     document.getElementById('start-screen').classList.add('hidden');
@@ -59,7 +60,6 @@ window.selectWeapon = function(type) {
         }
     }
 };
-
 
 // Start
 init();

@@ -23,6 +23,9 @@ export const state = {
     wind: 0,
     screenShake: 0,
     
+    // NEW: Flag for Campaign End
+    flag: { x: 0, y: 0, poleHeight: 80, currentHeight: 0, raising: false, raised: false, active: false },
+
     // Camera
     camera: { x: 0, y: 0, zoom: 1, targetZoom: 1 },
     
@@ -52,8 +55,8 @@ export const state = {
     enemiesKilled: 0,
     spManager: null,
     
-    // --- NEW CAMPAIGN STATE ---
+    // Campaign
     campaignManager: null,
-    campaignProgress: 1, // Current unlocked level
+    campaignProgress: 1,
     currentLevelId: 0
 };

@@ -5,16 +5,17 @@ import { generateCampaignTerrain } from './world.js';
 import { startGameClient } from './game.js';
 import { updateHUD, log, createExplosion } from './ui.js';
 import { dist, fxRand } from './utils.js';
+import { FloatingText } from './entities/FloatingText.js';
 
-// Configuration for the World Map
+// Configuration for the World Map with Weapon Unlocks
 const LEVELS = [
-    { id: 1, x: 150, y: 450, name: "NORMANDY BEACH", type: 'linear', difficulty: 1, length: 4000 },
-    { id: 2, x: 250, y: 400, name: "PARIS RUINS", type: 'linear', difficulty: 2, length: 5000 },
-    { id: 3, x: 380, y: 350, name: "ALPS PASS", type: 'linear', difficulty: 3, length: 5000 }, 
-    { id: 4, x: 450, y: 280, name: "BERLIN OUTSKIRTS", type: 'linear', difficulty: 4, length: 6000 },
-    { id: 5, x: 550, y: 250, name: "WARSAW GATE", type: 'boss', difficulty: 5, length: 2000 }, 
-    { id: 6, x: 650, y: 220, name: "MINSK FACTORY", type: 'linear', difficulty: 6, length: 6000 },
-    { id: 7, x: 750, y: 180, name: "MOSCOW CITADEL", type: 'boss', difficulty: 8, length: 3000 } 
+    { id: 1, x: 150, y: 450, name: "NORMANDY BEACH", type: 'linear', difficulty: 1, length: 4000, unlock: null },
+    { id: 2, x: 250, y: 400, name: "PARIS RUINS", type: 'linear', difficulty: 2, length: 5000, unlock: 'scatter' },
+    { id: 3, x: 380, y: 350, name: "ALPS PASS", type: 'linear', difficulty: 3, length: 5000, unlock: 'seeker' }, 
+    { id: 4, x: 450, y: 280, name: "BERLIN OUTSKIRTS", type: 'linear', difficulty: 4, length: 6000, unlock: 'laser' },
+    { id: 5, x: 550, y: 250, name: "WARSAW GATE", type: 'boss', difficulty: 5, length: 2000, unlock: 'nuke' }, 
+    { id: 6, x: 650, y: 220, name: "MINSK FACTORY", type: 'linear', difficulty: 6, length: 6000, unlock: 'builder' },
+    { id: 7, x: 750, y: 180, name: "MOSCOW CITADEL", type: 'boss', difficulty: 8, length: 3000, unlock: null } 
 ];
 
 export class CampaignManager {
@@ -24,7 +25,7 @@ export class CampaignManager {
         this.mapCtx = this.mapCanvas.getContext('2d');
         this.levelActive = false;
         
-        // FIX: Expose levels for game loop access
+        // Expose levels for game loop access
         this.LEVELS = LEVELS;
         
         // Listen for map clicks
@@ -77,12 +78,38 @@ export class CampaignManager {
         const w = this.mapCanvas.width;
         const h = this.mapCanvas.height;
         
-        // Draw Background (Abstract Euro Map)
+        // Draw Background (Ocean)
         ctx.fillStyle = '#001020';
         ctx.fillRect(0, 0, w, h);
+
+        // --- DRAW EUROPE (Simplified) ---
+        ctx.save();
+        ctx.beginPath();
+        ctx.fillStyle = '#0a2a40';
+        ctx.strokeStyle = '#0ff';
+        ctx.lineWidth = 2;
         
-        // Draw Grid
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+        // Simple shape approximating Europe coords scaled to canvas
+        const scaleX = w / 1000; 
+        const scaleY = h / 600;
+        
+        ctx.moveTo(100 * scaleX, 450 * scaleY); // Spain
+        ctx.lineTo(200 * scaleX, 400 * scaleY); // France
+        ctx.lineTo(250 * scaleX, 300 * scaleY); // UK/North
+        ctx.lineTo(400 * scaleX, 280 * scaleY); // Germany/North
+        ctx.lineTo(500 * scaleX, 200 * scaleY); // Scandinavia
+        ctx.lineTo(700 * scaleX, 220 * scaleY); // Russia North
+        ctx.lineTo(800 * scaleX, 400 * scaleY); // Russia South
+        ctx.lineTo(600 * scaleX, 450 * scaleY); // Black Sea area
+        ctx.lineTo(500 * scaleX, 500 * scaleY); // Italy/Balkans
+        ctx.lineTo(300 * scaleX, 480 * scaleY); // Italy
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        
+        // Draw Grid Overlay
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
         ctx.lineWidth = 1;
         for(let i=0; i<w; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,h); ctx.stroke(); }
         for(let i=0; i<h; i+=50) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(w,i); ctx.stroke(); }
@@ -95,6 +122,9 @@ export class CampaignManager {
         for(let i=0; i<LEVELS.length-1; i++) {
             const cur = LEVELS[i];
             const next = LEVELS[i+1];
+            // Scale points based on fixed design resolution (800x600 ref) if needed, 
+            // but LEVELS coords are fixed pixels in the prompt. We'll assume fixed layout or simple scaling.
+            // Using the raw coordinates from LEVELS for simplicity as requested.
             ctx.moveTo(cur.x, cur.y);
             ctx.lineTo(next.x, next.y);
         }
@@ -130,7 +160,12 @@ export class CampaignManager {
         // Title
         ctx.fillStyle = '#0ff';
         ctx.font = '30px Orbitron';
+        ctx.textAlign = 'center';
         ctx.fillText("CAMPAIGN MAP: OPERATION EUROPE", w/2, 50);
+        
+        ctx.font = '14px Orbitron';
+        ctx.fillStyle = '#aaa';
+        ctx.fillText("CLICK A FLASHING NODE TO DEPLOY", w/2, 80);
     }
 
     handleMapClick(e) {
@@ -162,6 +197,10 @@ export class CampaignManager {
         state.planes = [];
         state.blocks = [];
         state.platforms = [];
+        state.flag.active = false;
+        state.flag.raised = false;
+        state.flag.currentHeight = 0;
+        state.flag.raising = false;
         
         // Generate Level Terrain
         generateCampaignTerrain(levelData);
@@ -172,11 +211,33 @@ export class CampaignManager {
         state.player.x = 200; // Start at left
         state.player.y = -500;
         
+        // --- WEAPON LOADOUT LOGIC ---
+        // Reset Ammo
+        state.player.ammo = { 'standard': Infinity, 'scatter': 0, 'laser': 0, 'nuke': 0, 'seeker': 0, 'builder': 0 };
+        state.player.currentWeapon = 'standard';
+        
+        // Check previously unlocked weapons (all levels before this one)
+        LEVELS.forEach(l => {
+            if (l.id < levelData.id && l.unlock) {
+                // Give some starter ammo for unlocked weapons
+                state.player.ammo[l.unlock] += 5; 
+            }
+        });
+        
+        // Announce current level unlock
+        if (levelData.unlock) {
+            setTimeout(() => {
+                log(`INTEL: ${levelData.unlock.toUpperCase()} WEAPON AVAILABLE IN CRATES`);
+                state.floatingTexts.push(new FloatingText(state.player.x, state.player.y - 100, `UNLOCK: ${levelData.unlock.toUpperCase()}`, '#ff0', 20));
+            }, 2000);
+        }
+
         // Populate Enemies based on Difficulty
         this.spawnLevelEnemies(levelData);
 
         // Update HUD
         document.getElementById('hud-level').innerText = levelData.name.toUpperCase();
+        updateHUD();
         
         this.levelActive = true;
         startGameClient();
@@ -224,26 +285,47 @@ export class CampaignManager {
     update() {
         if (!state.gameActive || !this.levelActive) return;
 
-        // Check Win Condition: Reach the right side
-        const levelData = LEVELS.find(l => l.id === state.currentLevelId);
-        if (!levelData) return;
-
-        // Check if boss is dead for boss levels
-        if (levelData.type === 'boss') {
-            const boss = Object.values(state.remotePlayers).find(p => p.behavior === 'boss');
-            if (!boss || boss.dead) {
-                this.levelComplete(levelData);
+        // Check Flag Interaction
+        if (state.flag.active && !state.flag.raised && !state.flag.raising) {
+            // Check collision with flag pole area
+            if (Math.abs(state.player.x - state.flag.x) < 50) {
+                // Count enemies
+                const enemies = Object.values(state.remotePlayers).filter(e => !e.dead);
+                if (enemies.length > 0) {
+                     // Warn player
+                     if (Math.floor(Date.now() / 1000) % 2 === 0) { // Throttle messages
+                        state.floatingTexts.push(new FloatingText(state.player.x, state.player.y - 60, "ELIMINATE ALL HOSTILES!", '#f00', 16));
+                     }
+                } else {
+                    // Start Raising Flag
+                    state.flag.raising = true;
+                    log("SECURING SECTOR...");
+                }
             }
-        } else {
-            // Linear level: Reach end bunker
-            if (state.player.x > levelData.length - 300) {
-                this.levelComplete(levelData);
+        }
+
+        // Handle Flag Animation
+        if (state.flag.raising) {
+            state.flag.currentHeight += 1; // Animation speed
+            if (state.flag.currentHeight >= state.flag.poleHeight - 10) {
+                state.flag.raised = true;
+                state.flag.raising = false;
+                this.levelComplete(LEVELS.find(l => l.id === state.currentLevelId));
             }
         }
         
         // Spawn help crates occasionally
-        if (Math.random() < 0.001) {
-             const type = ['repair', 'ammo'][Math.floor(Math.random()*2)];
+        if (Math.random() < 0.002) {
+             // Only spawn ammo for weapons unlocked SO FAR
+             const levelData = LEVELS.find(l => l.id === state.currentLevelId);
+             let possibleDrops = ['repair', 'ammo'];
+             
+             // Add unlocked weapons to pool
+             LEVELS.forEach(l => {
+                 if (l.id <= levelData.id && l.unlock) possibleDrops.push(l.unlock);
+             });
+             
+             const type = possibleDrops[Math.floor(Math.random()*possibleDrops.length)];
              const x = state.player.x + fxRand(-500, 500);
              state.crates.push(new Crate(`drop_${Date.now()}`, x, -500, type));
         }
@@ -254,18 +336,19 @@ export class CampaignManager {
         state.gameActive = false;
         log("MISSION ACCOMPLISHED!");
         
-        createExplosion(state.player.x, state.player.y, 'heal'); // Celebration fx
+        createExplosion(state.flag.x, state.flag.y, 'heal'); // Celebration fx
         
         setTimeout(() => {
-            alert(`SECTOR ${levelData.name} SECURED!`);
             if (state.currentLevelId === state.campaignProgress) {
                 state.campaignProgress++;
             }
             if (state.campaignProgress > LEVELS.length) {
                 alert("CONGRATULATIONS! EUROPE IS FREE!");
                 state.campaignProgress = 1;
+            } else {
+                alert(`SECTOR ${levelData.name} SECURED!`);
             }
             this.showMap();
-        }, 2000);
+        }, 3000);
     }
 }

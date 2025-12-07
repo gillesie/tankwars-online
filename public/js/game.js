@@ -44,10 +44,9 @@ function drawTrajectory(ctx, tank, scaleX = 1, scaleY = 1, offsetX = 0, offsetY 
     let startY = (tank.y - 15) + Math.sin(rad) * 20;
 
     ctx.beginPath();
-    // Apply scale/offset only for drawing
     ctx.moveTo(startX * scaleX + offsetX, startY * scaleY + offsetY);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 2 * scaleX; // Scale line width too roughly
+    ctx.lineWidth = 2 * scaleX; 
     if(scaleX === 1) ctx.setLineDash([5, 5]);
 
     let simX = startX;
@@ -65,10 +64,7 @@ function drawTrajectory(ctx, tank, scaleX = 1, scaleY = 1, offsetX = 0, offsetY 
         simVy += GRAVITY;
         if (tank.currentWeapon !== 'seeker') simVx += state.wind;
         simX += simVx; simY += simVy;
-        
-        // Draw point mapped to context
         ctx.lineTo(simX * scaleX + offsetX, simY * scaleY + offsetY);
-        
         if (simY >= getTerrainHeight(simX)) break;
     }
     ctx.stroke(); 
@@ -99,11 +95,8 @@ function drawMinimap() {
     if (state.player) {
         ctx.fillStyle = state.player.team === 1 ? '#0ff' : '#f00';
         ctx.fillRect(state.player.x * scaleX, state.player.y * scaleY, 4, 4);
-        
-        // Show Trajectory on Minimap
         if (state.isCharging && state.gameActive && !state.isDrawing) {
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
             drawTrajectory(ctx, state.player, scaleX, scaleY);
         }
     }
@@ -115,29 +108,17 @@ function drawMinimap() {
         }
     });
 
-    // Show Projectiles on Minimap (Fixed: Only show active)
     ctx.fillStyle = '#ff0';
-    state.projectiles.forEach(p => {
-        if (p.active) {
-            ctx.fillRect(p.x * scaleX, p.y * scaleY, 2, 2);
-        }
-    });
+    state.projectiles.forEach(p => { if (p.active) ctx.fillRect(p.x * scaleX, p.y * scaleY, 2, 2); });
 
-    // Show Blocks on Minimap
     ctx.fillStyle = '#667';
-    state.blocks.forEach(b => {
-        ctx.fillRect(b.x * scaleX, b.y * scaleY, 2, 2);
-    });
+    state.blocks.forEach(b => { ctx.fillRect(b.x * scaleX, b.y * scaleY, 2, 2); });
 
     ctx.fillStyle = '#fff';
-    state.planes.forEach(p => {
-         ctx.fillRect(p.x * scaleX, p.y * scaleY, 5, 3);
-    });
+    state.planes.forEach(p => { ctx.fillRect(p.x * scaleX, p.y * scaleY, 5, 3); });
 
     ctx.fillStyle = '#0f0';
-    state.crates.forEach(c => {
-         ctx.fillRect((c.x * scaleX)-1, (c.y * scaleY)-1, 3, 3);
-    });
+    state.crates.forEach(c => { ctx.fillRect((c.x * scaleX)-1, (c.y * scaleY)-1, 3, 3); });
 }
 
 function animate() {
@@ -148,27 +129,18 @@ function animate() {
     lastTime = now;
 
     if (state.gameActive && state.player) {
-        if (state.gameMode === 'sp' && state.spManager) {
-            state.spManager.update();
-        }
-
-        // NEW: Campaign Update
-        if (state.gameMode === 'campaign' && state.campaignManager) {
-            state.campaignManager.update();
-        }
+        if (state.gameMode === 'sp' && state.spManager) state.spManager.update();
+        if (state.gameMode === 'campaign' && state.campaignManager) state.campaignManager.update();
 
         state.player.update();
         Object.values(state.remotePlayers).forEach(p => p.update());
         
-        // Update Projectiles and Filter Inactive
         state.projectiles.forEach(p => p.update());
         state.projectiles = state.projectiles.filter(p => p.active);
 
         state.particles.forEach(p => p.update());
         state.crates.forEach(c => c.update());
         state.planes.forEach(p => p.update());
-        
-        // Update Blocks
         state.blocks.forEach(b => b.update());
 
         state.floatingTexts.forEach(t => t.update());
@@ -177,14 +149,17 @@ function animate() {
         let targetCamX = state.player.x - (state.width / 2 / state.camera.zoom);
         let targetCamY = state.player.y - (state.height / 2 / state.camera.zoom); 
         
-        // FIX: Correctly check campaign level length
-        let maxW = 6000;
+        // --- RESTORED CAMERA LOGIC ---
+        let maxW = TERRAIN_WIDTH;
         if (state.gameMode === 'campaign' && state.campaignManager && state.campaignManager.LEVELS) {
              const lvl = state.campaignManager.LEVELS.find(l => l.id === state.currentLevelId);
              if (lvl) maxW = lvl.length;
         }
         
-        targetCamX = clamp(targetCamX, 0, maxW); 
+        // Prevent seeing the "void" past the level end
+        const viewW = state.width / state.camera.zoom;
+        targetCamX = clamp(targetCamX, 0, maxW - viewW); 
+        
         state.camera.x += (targetCamX - state.camera.x) * 0.1;
         state.camera.y += (targetCamY - state.camera.y) * 0.1;
     } else if (state.player) {
@@ -210,36 +185,49 @@ function animate() {
     ctx.fillRect(state.camera.x, state.camera.y, state.width/state.camera.zoom, state.height/state.camera.zoom);
 
     drawTerrain(ctx);
-    
-    // Draw Blocks
     state.blocks.forEach(b => b.draw(ctx));
+
+    // --- DRAW FLAG (Campaign) ---
+    if (state.gameMode === 'campaign' && state.flag.active) {
+        ctx.save();
+        ctx.translate(state.flag.x, state.flag.y);
+        
+        // Pole
+        ctx.fillStyle = '#888';
+        ctx.fillRect(-2, -state.flag.poleHeight, 4, state.flag.poleHeight);
+        
+        // Top Ball
+        ctx.fillStyle = '#ff0';
+        ctx.beginPath(); ctx.arc(0, -state.flag.poleHeight, 4, 0, Math.PI*2); ctx.fill();
+        
+        // Flag
+        const fh = -state.flag.poleHeight + (state.flag.poleHeight - 10 - state.flag.currentHeight);
+        ctx.fillStyle = state.flag.raised ? '#0f0' : '#f00';
+        ctx.beginPath();
+        ctx.moveTo(0, fh);
+        ctx.lineTo(30, fh + 10);
+        ctx.lineTo(0, fh + 20);
+        ctx.fill();
+        
+        ctx.restore();
+    }
 
     if (state.isDrawing && state.gameActive) {
         const trueX = state.mousePos.x / state.camera.zoom + state.camera.x;
         const trueY = state.mousePos.y / state.camera.zoom + state.camera.y;
         
-        ctx.strokeStyle = '#f0f';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath();
-        ctx.moveTo(state.drawStart.x, state.drawStart.y);
-        ctx.lineTo(trueX, trueY);
-        ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.strokeStyle = '#f0f'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(state.drawStart.x, state.drawStart.y); ctx.lineTo(trueX, trueY); ctx.stroke(); ctx.setLineDash([]);
         
         ctx.save();
         const dx = trueX - state.drawStart.x;
         const dy = trueY - state.drawStart.y;
         const angle = Math.atan2(dy, dx);
         const len = Math.sqrt(dx*dx + dy*dy);
-        ctx.translate(state.drawStart.x, state.drawStart.y);
-        ctx.rotate(angle);
-        ctx.strokeRect(0, 0, len, 20);
-        ctx.restore();
+        ctx.translate(state.drawStart.x, state.drawStart.y); ctx.rotate(angle); ctx.strokeRect(0, 0, len, 20); ctx.restore();
     }
 
     state.crates.forEach(c => c.draw(ctx));
-
     if (state.player && state.gameActive) state.player.draw(ctx);
     
     Object.values(state.remotePlayers).forEach(p => p.draw(ctx));

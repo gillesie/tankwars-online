@@ -43,6 +43,15 @@ export function updateHUD() {
 
 export function updateScoreboard() {
     if (!state.player) return;
+    
+    // HIDE SCOREBOARD IN CAMPAIGN
+    if (state.gameMode === 'campaign') {
+        document.getElementById('scoreboard').style.display = 'none';
+        return;
+    }
+    
+    document.getElementById('scoreboard').style.display = 'block';
+
     const blueList = document.getElementById('sb-list-1');
     const redList = document.getElementById('sb-list-2');
     blueList.innerHTML = ''; redList.innerHTML = '';

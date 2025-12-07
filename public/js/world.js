@@ -56,14 +56,12 @@ function generateBlocks(destroyedBlockIds) {
         const centerX = rand(600, TERRAIN_WIDTH - 600, state.seed);
         const type = rand(0, 1, state.seed) > 0.5 ? 'pyramid' : 'tower';
         
-        // Start high up, let gravity settle them
         const startY = -1200; 
 
         if (type === 'pyramid') {
             const baseSize = Math.floor(rand(4, 7, state.seed));
             for(let row=0; row<baseSize; row++) {
                 const cols = baseSize - row;
-                // Center the row
                 const rowWidth = cols * blockSize;
                 const startRowX = centerX - rowWidth / 2;
                 
@@ -77,12 +75,10 @@ function generateBlocks(destroyedBlockIds) {
                 }
             }
         } else {
-            // Irregular Mountain/Tower
             const width = Math.floor(rand(3, 5, state.seed));
             const maxHeight = Math.floor(rand(5, 12, state.seed));
             
             for(let col=0; col<width; col++) {
-                // Varying height per column for "mountain" look
                 const colHeight = Math.floor(rand(maxHeight/2, maxHeight, state.seed));
                 for(let row=0; row<colHeight; row++) {
                     const id = `blk_t${i}_c${col}_r${row}`;
@@ -152,7 +148,6 @@ export function drawTerrain(ctx) {
             ctx.strokeStyle = 'rgba(0,0,0,0.6)';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            // Simple deterministic pseudo-random cracks based on platform props
             let seed = p.width + p.x; 
             const crackCount = Math.floor(p.width / 20 * damageLevel);
             for(let k=0; k<crackCount; k++) {
@@ -177,7 +172,7 @@ export function drawTerrain(ctx) {
     ctx.restore();
 }
 
-// --- NEW FUNCTION FOR CAMPAIGN ---
+// --- CAMPAIGN GENERATOR ---
 export function generateCampaignTerrain(levelData) {
     state.terrainPoints.length = 0;
     state.platforms.length = 0;
@@ -189,41 +184,35 @@ export function generateCampaignTerrain(levelData) {
     for (let x = 0; x <= length + 1000; x += SEGMENT_SIZE) {
         let y = WORLD_HEIGHT * 0.7;
         
-        // Add Pits (except at start and end)
         if (x > 500 && x < length - 500) {
-             // Procedural pits
              if (Math.sin(x * 0.005) > 0.8) {
                  y += 600; // Pit
              } else {
-                 y += Math.sin(x * 0.01) * 50; // Gentle hills
+                 y += Math.sin(x * 0.01) * 50; 
              }
         }
         
-        // Boss Arena needs flat ground
         if (levelData.type === 'boss') y = WORLD_HEIGHT * 0.8;
 
         state.terrainPoints.push({x, y});
     }
 
-    // 2. Generate Platforms for jumping
+    // 2. Platforms
     if (levelData.type !== 'boss') {
         let currentX = 600;
         while(currentX < length - 600) {
             const gap = rand(200, 400, state.seed);
             const w = rand(150, 400, state.seed);
-            const h = rand(100, 400, state.seed); // Height from ground
+            const h = rand(100, 400, state.seed);
             
-            // Determine ground height at this X
             const groundY = getTerrainHeight(currentX);
             
-            if (groundY > WORLD_HEIGHT) { // We are over a pit
-                // Must place platform to cross
+            if (groundY > WORLD_HEIGHT) { // Over pit
                 state.platforms.push({
                     id: `plat_${currentX}`, x: currentX, y: WORLD_HEIGHT * 0.7 - 50,
                     width: w, height: 20, angle: 0, hp: Infinity, maxHp: 200, type: 'unbreakable'
                 });
             } else {
-                // Random platform for elevation
                 if (Math.random() > 0.5) {
                     state.platforms.push({
                          id: `plat_${currentX}`, x: currentX, y: groundY - h,
@@ -235,7 +224,7 @@ export function generateCampaignTerrain(levelData) {
             currentX += w + gap;
         }
     } else {
-        // Boss Arena Platforms (Verticality)
+        // Boss Arena
         for(let i=0; i<10; i++) {
             state.platforms.push({
                 id: `boss_p_${i}`,
@@ -246,13 +235,29 @@ export function generateCampaignTerrain(levelData) {
         }
     }
 
-    // 3. Generate End Bunker / Base
+    // 3. Generate Better Base (Bunker) + Flag
     const endX = length - 200;
     const endY = getTerrainHeight(endX);
-    // Build a simple structure
-    for(let r=0; r<6; r++) {
-        for(let c=0; c<4; c++) {
-            state.blocks.push(new Block(`base_${r}_${c}`, endX + (c*30), endY - 30 - (r*30), 30));
-        }
-    }
+    
+    // Init Flag
+    state.flag.active = true;
+    state.flag.x = endX + 150;
+    state.flag.y = endY;
+    state.flag.raised = false;
+    state.flag.raising = false;
+    state.flag.currentHeight = 0;
+    
+    // Bunker Structure
+    const bs = 30; // block size
+    // Back Wall
+    for(let i=0; i<5; i++) state.blocks.push(new Block(`b_wall_${i}`, endX + 100, endY - (i*bs) - bs, bs));
+    // Roof
+    for(let i=0; i<5; i++) state.blocks.push(new Block(`b_roof_${i}`, endX + (i*bs) - 30, endY - 150, bs));
+    // Front barricade
+    state.blocks.push(new Block(`b_front`, endX, endY - bs, bs));
+    
+    // Set some blocks to be metallic color
+    state.blocks.forEach(b => {
+        if(b.id.startsWith('b_')) b.color = '#444'; 
+    });
 }

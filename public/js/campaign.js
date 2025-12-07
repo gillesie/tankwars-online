@@ -27,6 +27,7 @@ export class CampaignManager {
         
         // Expose levels for game loop access
         this.LEVELS = LEVELS;
+        this.warningCooldown = 0; // Cooldown for "Kill Enemies" message
         
         // Listen for map clicks
         this.mapCanvas.addEventListener('click', (e) => this.handleMapClick(e));
@@ -89,7 +90,6 @@ export class CampaignManager {
         ctx.strokeStyle = '#0ff';
         ctx.lineWidth = 2;
         
-        // Simple shape approximating Europe coords scaled to canvas
         const scaleX = w / 1000; 
         const scaleY = h / 600;
         
@@ -122,9 +122,6 @@ export class CampaignManager {
         for(let i=0; i<LEVELS.length-1; i++) {
             const cur = LEVELS[i];
             const next = LEVELS[i+1];
-            // Scale points based on fixed design resolution (800x600 ref) if needed, 
-            // but LEVELS coords are fixed pixels in the prompt. We'll assume fixed layout or simple scaling.
-            // Using the raw coordinates from LEVELS for simplicity as requested.
             ctx.moveTo(cur.x, cur.y);
             ctx.lineTo(next.x, next.y);
         }
@@ -201,6 +198,7 @@ export class CampaignManager {
         state.flag.raised = false;
         state.flag.currentHeight = 0;
         state.flag.raising = false;
+        state.centralMsg.timer = 0; // Clear any old messages
         
         // Generate Level Terrain
         generateCampaignTerrain(levelData);
@@ -228,8 +226,10 @@ export class CampaignManager {
         if (levelData.unlock) {
             setTimeout(() => {
                 log(`INTEL: ${levelData.unlock.toUpperCase()} WEAPON AVAILABLE IN CRATES`);
-                state.floatingTexts.push(new FloatingText(state.player.x, state.player.y - 100, `UNLOCK: ${levelData.unlock.toUpperCase()}`, '#ff0', 20));
-            }, 2000);
+                state.centralMsg.text = `UNLOCK: ${levelData.unlock.toUpperCase()}`;
+                state.centralMsg.color = "#ff0";
+                state.centralMsg.timer = 120;
+            }, 1000);
         }
 
         // Populate Enemies based on Difficulty
@@ -285,6 +285,8 @@ export class CampaignManager {
     update() {
         if (!state.gameActive || !this.levelActive) return;
 
+        if (this.warningCooldown > 0) this.warningCooldown--;
+
         // Check Flag Interaction
         if (state.flag.active && !state.flag.raised && !state.flag.raising) {
             // Check collision with flag pole area
@@ -292,9 +294,12 @@ export class CampaignManager {
                 // Count enemies
                 const enemies = Object.values(state.remotePlayers).filter(e => !e.dead);
                 if (enemies.length > 0) {
-                     // Warn player
-                     if (Math.floor(Date.now() / 1000) % 2 === 0) { // Throttle messages
-                        state.floatingTexts.push(new FloatingText(state.player.x, state.player.y - 60, "ELIMINATE ALL HOSTILES!", '#f00', 16));
+                     // Warn player (once every few seconds)
+                     if (this.warningCooldown <= 0) {
+                         state.centralMsg.text = "ELIMINATE ALL HOSTILES";
+                         state.centralMsg.color = "#f00";
+                         state.centralMsg.timer = 120; // 2 seconds visible
+                         this.warningCooldown = 180; // 3 seconds cooldown
                      }
                 } else {
                     // Start Raising Flag
@@ -338,17 +343,25 @@ export class CampaignManager {
         
         createExplosion(state.flag.x, state.flag.y, 'heal'); // Celebration fx
         
+        // Show in-game message instead of alert
+        state.centralMsg.text = "SECTOR SECURED";
+        state.centralMsg.color = "#0f0";
+        state.centralMsg.timer = 180; // 3 seconds
+
         setTimeout(() => {
             if (state.currentLevelId === state.campaignProgress) {
                 state.campaignProgress++;
             }
             if (state.campaignProgress > LEVELS.length) {
-                alert("CONGRATULATIONS! EUROPE IS FREE!");
-                state.campaignProgress = 1;
+                // Campaign Finished
+                state.centralMsg.text = "EUROPE LIBERATED!";
+                setTimeout(() => {
+                    state.campaignProgress = 1;
+                    this.showMap();
+                }, 3000);
             } else {
-                alert(`SECTOR ${levelData.name} SECURED!`);
+                this.showMap();
             }
-            this.showMap();
         }, 3000);
     }
 }

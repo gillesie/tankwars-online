@@ -6,12 +6,14 @@ import { Projectile } from './Projectile.js';
 import { createExplosion, updateHUD } from '../ui.js';
 import { FloatingText } from './FloatingText.js';
 
-// ... (SVG Imports remain the same) ...
+// --- ASSET LOADING ---
 const blueTankSVG = `<svg width="100" height="60" viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#0055aa;stop-opacity:1" /><stop offset="100%" style="stop-color:#00ffff;stop-opacity:1" /></linearGradient><filter id="glow"><feGaussianBlur stdDeviation="2.5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M10,40 L90,40 L85,55 L15,55 Z" fill="#222" stroke="#0ff" stroke-width="2"/><path d="M15,40 L25,25 L75,25 L85,40 Z" fill="url(#blueGrad)" stroke="#fff" stroke-width="1"/><circle cx="50" cy="25" r="15" fill="#003366" stroke="#0ff" stroke-width="2"/><rect x="50" y="20" width="45" height="10" fill="#000" stroke="#0ff" stroke-width="1"/><rect x="90" y="18" width="5" height="14" fill="#0ff" filter="url(#glow)"/></svg>`;
+
 const redTankSVG = `<svg width="100" height="60" viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#aa0000;stop-opacity:1" /><stop offset="100%" style="stop-color:#ff5500;stop-opacity:1" /></linearGradient><filter id="glowRed"><feGaussianBlur stdDeviation="2.5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M10,40 L90,40 L85,55 L15,55 Z" fill="#222" stroke="#f00" stroke-width="2"/><path d="M15,40 L25,25 L75,25 L85,40 Z" fill="url(#redGrad)" stroke="#fff" stroke-width="1"/><circle cx="50" cy="25" r="15" fill="#660000" stroke="#f00" stroke-width="2"/><rect x="50" y="20" width="45" height="10" fill="#000" stroke="#f00" stroke-width="1"/><rect x="90" y="18" width="5" height="14" fill="#f00" filter="url(#glowRed)"/></svg>`;
 
 const blueImg = new Image();
 blueImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(blueTankSVG);
+
 const redImg = new Image();
 redImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(redTankSVG);
 
@@ -168,6 +170,7 @@ export class Tank {
              // Patrol range check
              if (Math.abs(this.x - this.patrolStart) > 300) {
                  this.patrolDir *= -1;
+                 // Reset start slightly to prevent getting stuck if pushed
                  this.patrolStart = this.x; 
              }
              return;
@@ -398,6 +401,7 @@ export class Tank {
         // Decide which image to draw based on team
         const img = (this.team === 1) ? blueImg : redImg;
         
+        // Draw Image centered (scaled down from 100x60 to 40x24 approx)
         ctx.drawImage(img, -18, -22, 36, 22);
 
         if (this.shield > 0) {
@@ -414,9 +418,9 @@ export class Tank {
         }
         ctx.restore();
 
-        // --- DRAW TURRET ---
+        // --- DRAW TURRET (Aim Indicator) ---
         ctx.save();
-        ctx.translate(this.x, this.y - 7); 
+        ctx.translate(this.x, this.y - 7); // Turret pivot point
         ctx.rotate(this.turretAngle * Math.PI / 180);
         
         ctx.shadowBlur = 5; 

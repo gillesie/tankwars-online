@@ -23,8 +23,11 @@ export const state = {
     wind: 0,
     screenShake: 0,
     
-    // NEW: Flag for Campaign End
+    // Flag for Campaign End
     flag: { x: 0, y: 0, poleHeight: 80, currentHeight: 0, raising: false, raised: false, active: false },
+    
+    // NEW: Central Message System (for notifications)
+    centralMsg: { text: '', color: '#fff', timer: 0 },
 
     // Camera
     camera: { x: 0, y: 0, zoom: 1, targetZoom: 1 },

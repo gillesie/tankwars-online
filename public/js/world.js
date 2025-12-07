@@ -250,14 +250,16 @@ export function generateCampaignTerrain(levelData) {
     // Bunker Structure
     const bs = 30; // block size
     // Back Wall
-    for(let i=0; i<5; i++) state.blocks.push(new Block(`b_wall_${i}`, endX + 100, endY - (i*bs) - bs, bs));
+    for(let i=0; i<5; i++) {
+        let b = new Block(`b_wall_${i}`, endX + 100, endY - (i*bs) - bs, bs);
+        b.color = '#333'; state.blocks.push(b);
+    }
     // Roof
-    for(let i=0; i<5; i++) state.blocks.push(new Block(`b_roof_${i}`, endX + (i*bs) - 30, endY - 150, bs));
+    for(let i=0; i<5; i++) {
+        let b = new Block(`b_roof_${i}`, endX + (i*bs) - 30, endY - 150, bs);
+        b.color = '#222'; state.blocks.push(b);
+    }
     // Front barricade
-    state.blocks.push(new Block(`b_front`, endX, endY - bs, bs));
-    
-    // Set some blocks to be metallic color
-    state.blocks.forEach(b => {
-        if(b.id.startsWith('b_')) b.color = '#444'; 
-    });
+    let b = new Block(`b_front`, endX, endY - bs, bs);
+    b.color = '#444'; state.blocks.push(b);
 }

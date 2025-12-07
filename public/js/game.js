@@ -149,14 +149,12 @@ function animate() {
         let targetCamX = state.player.x - (state.width / 2 / state.camera.zoom);
         let targetCamY = state.player.y - (state.height / 2 / state.camera.zoom); 
         
-        // --- RESTORED CAMERA LOGIC ---
         let maxW = TERRAIN_WIDTH;
         if (state.gameMode === 'campaign' && state.campaignManager && state.campaignManager.LEVELS) {
              const lvl = state.campaignManager.LEVELS.find(l => l.id === state.currentLevelId);
              if (lvl) maxW = lvl.length;
         }
         
-        // Prevent seeing the "void" past the level end
         const viewW = state.width / state.camera.zoom;
         targetCamX = clamp(targetCamX, 0, maxW - viewW); 
         
@@ -239,5 +237,22 @@ function animate() {
     if (state.isCharging && state.player && state.gameActive && !state.isDrawing) drawTrajectory(ctx, state.player);
 
     ctx.restore();
+    
+    // --- DRAW CENTRAL MESSAGE ---
+    if (state.centralMsg.timer > 0) {
+        state.centralMsg.timer--;
+        const ctxUI = state.ctx; // Draw on main context (on top)
+        ctxUI.save();
+        ctxUI.globalAlpha = Math.min(1, state.centralMsg.timer / 30);
+        ctxUI.fillStyle = state.centralMsg.color;
+        ctxUI.shadowBlur = 10;
+        ctxUI.shadowColor = state.centralMsg.color;
+        ctxUI.font = "900 40px Orbitron";
+        ctxUI.textAlign = "center";
+        ctxUI.textBaseline = "middle";
+        ctxUI.fillText(state.centralMsg.text, state.width/2, state.height/2 - 100);
+        ctxUI.restore();
+    }
+    
     if(state.gameActive) drawMinimap();
 }

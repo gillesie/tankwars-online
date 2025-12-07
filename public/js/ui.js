@@ -31,20 +31,26 @@ export function updateHUD() {
         }
     });
 
-    if(state.isCharging) {
-        const duration = Date.now() - state.mousePressedTime;
-        const pct = Math.min((duration / 1000) * 100, 100);
-        document.getElementById('hud-power').style.width = pct + "%";
-        document.getElementById('power-text').innerText = Math.floor(pct) + "%";
+    // CAMPAIGN FIX: Hide power overlay in campaign mode
+    if (state.gameMode === 'campaign') {
+        document.getElementById('power-overlay').style.display = 'none';
     } else {
-        document.getElementById('power-text').innerText = "0%";
+        document.getElementById('power-overlay').style.display = 'block';
+        if(state.isCharging) {
+            const duration = Date.now() - state.mousePressedTime;
+            const pct = Math.min((duration / 1000) * 100, 100);
+            document.getElementById('hud-power').style.width = pct + "%";
+            document.getElementById('power-text').innerText = Math.floor(pct) + "%";
+        } else {
+            document.getElementById('power-text').innerText = "0%";
+        }
     }
 }
 
 export function updateScoreboard() {
     if (!state.player) return;
     
-    // HIDE SCOREBOARD IN CAMPAIGN
+    // CAMPAIGN FIX: Hide Scoreboard (Blue/Red box)
     if (state.gameMode === 'campaign') {
         document.getElementById('scoreboard').style.display = 'none';
         return;

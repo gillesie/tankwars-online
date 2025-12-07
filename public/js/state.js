@@ -61,5 +61,6 @@ export const state = {
     // Campaign
     campaignManager: null,
     campaignProgress: 1,
+    completedLevels: [], // Tracks IDs of completed levels for branching paths
     currentLevelId: 0
 };

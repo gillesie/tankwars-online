@@ -7,16 +7,46 @@ import { updateHUD, log, createExplosion } from './ui.js';
 import { dist, fxRand } from './utils.js';
 import { FloatingText } from './entities/FloatingText.js';
 
-// Configuration for the World Map with Weapon Unlocks
+// --- NEW CAMPAIGN MAP (20 Levels, Branching Paths) ---
+// IDs are used for logic, 'next' defines the graph structure
 const LEVELS = [
-    { id: 1, x: 150, y: 450, name: "NORMANDY BEACH", type: 'linear', difficulty: 1, length: 4000, unlock: null },
-    { id: 2, x: 250, y: 400, name: "PARIS RUINS", type: 'linear', difficulty: 2, length: 5000, unlock: 'scatter' },
-    { id: 3, x: 380, y: 350, name: "ALPS PASS", type: 'linear', difficulty: 3, length: 5000, unlock: 'seeker' }, 
-    { id: 4, x: 450, y: 280, name: "BERLIN OUTSKIRTS", type: 'linear', difficulty: 4, length: 6000, unlock: 'laser' },
-    { id: 5, x: 550, y: 250, name: "WARSAW GATE", type: 'boss', difficulty: 5, length: 2000, unlock: 'nuke' }, 
-    { id: 6, x: 650, y: 220, name: "MINSK FACTORY", type: 'linear', difficulty: 6, length: 6000, unlock: 'builder' },
-    { id: 7, x: 750, y: 180, name: "MOSCOW CITADEL", type: 'boss', difficulty: 8, length: 3000, unlock: null } 
+    // Act 1: The Beginning
+    { id: 1, x: 50, y: 300, name: "BOOT CAMP", type: 'linear', difficulty: 1, length: 3000, unlock: null, next: [2] },
+    { id: 2, x: 120, y: 300, name: "OUTPOST", type: 'linear', difficulty: 1, length: 4000, unlock: 'scatter', next: [3, 4] },
+    
+    // Act 2: The Split (Fork)
+    { id: 3, x: 200, y: 200, name: "NORTH RIDGE", type: 'linear', difficulty: 2, length: 4000, unlock: null, next: [5] },
+    { id: 4, x: 200, y: 400, name: "SOUTH SWAMP", type: 'linear', difficulty: 2, length: 4000, unlock: null, next: [6] },
+    { id: 5, x: 280, y: 180, name: "FROZEN PEAK", type: 'linear', difficulty: 3, length: 5000, unlock: null, next: [7] },
+    { id: 6, x: 280, y: 420, name: "MUDDY WATERS", type: 'linear', difficulty: 3, length: 5000, unlock: null, next: [7] },
+    
+    // Act 3: Convergence & Mini Boss
+    { id: 7, x: 360, y: 300, name: "IRON GATE", type: 'boss', difficulty: 4, length: 3000, unlock: 'seeker', next: [8] },
+    
+    // Act 4: The Plains
+    { id: 8, x: 440, y: 300, name: "DUST PLAINS", type: 'linear', difficulty: 4, length: 5000, unlock: null, next: [9, 10] },
+    { id: 9, x: 520, y: 250, name: "SANDSTORM", type: 'linear', difficulty: 5, length: 6000, unlock: null, next: [11] },
+    { id: 10, x: 520, y: 350, name: "CANYON RUN", type: 'linear', difficulty: 5, length: 6000, unlock: null, next: [11] },
+    
+    // Act 5: Heavy Industry
+    { id: 11, x: 600, y: 300, name: "STEEL WORKS", type: 'linear', difficulty: 6, length: 6000, unlock: 'laser', next: [12] },
+    { id: 12, x: 680, y: 300, name: "REACTOR CORE", type: 'linear', difficulty: 7, length: 5000, unlock: null, next: [13, 14, 15] },
+    
+    // Act 6: Triple Fork
+    { id: 13, x: 760, y: 150, name: "SKY FORTRESS", type: 'linear', difficulty: 8, length: 7000, unlock: null, next: [16] },
+    { id: 14, x: 780, y: 300, name: "MAGMA CORE", type: 'linear', difficulty: 8, length: 6000, unlock: null, next: [16] },
+    { id: 15, x: 760, y: 450, name: "DEEP OCEAN", type: 'linear', difficulty: 8, length: 7000, unlock: null, next: [16] },
+    
+    // Act 7: The End Game
+    { id: 16, x: 850, y: 300, name: "LAST LINE", type: 'boss', difficulty: 9, length: 4000, unlock: 'nuke', next: [17] },
+    { id: 17, x: 920, y: 300, name: "THE CORRIDOR", type: 'linear', difficulty: 10, length: 8000, unlock: 'builder', next: [18] },
+    { id: 18, x: 990, y: 300, name: "OMEGA BASE", type: 'boss', difficulty: 12, length: 4000, unlock: null, next: [19] },
+    { id: 19, x: 1060, y: 300, name: "VICTORY LAP", type: 'linear', difficulty: 1, length: 2000, unlock: null, next: [20] },
+    { id: 20, x: 1150, y: 300, name: "DEV ROOM", type: 'linear', difficulty: 15, length: 5000, unlock: null, next: [] }
 ];
+
+const BASE_MAP_W = 1200;
+const BASE_MAP_H = 600;
 
 export class CampaignManager {
     constructor() {
@@ -25,12 +55,14 @@ export class CampaignManager {
         this.mapCtx = this.mapCanvas.getContext('2d');
         this.levelActive = false;
         
-        // Expose levels for game loop access
+        // Expose levels
         this.LEVELS = LEVELS;
-        this.warningCooldown = 0; // Cooldown for "Kill Enemies" message
+        this.warningCooldown = 0;
+        this.hoveredLevel = null;
         
-        // Listen for map clicks
+        // Listeners
         this.mapCanvas.addEventListener('click', (e) => this.handleMapClick(e));
+        this.mapCanvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         
         // Resize logic
         this.resizeMap();
@@ -53,6 +85,9 @@ export class CampaignManager {
         state.myId = 'player';
         state.myTeam = 1;
         
+        // Ensure progress array exists
+        if (!state.completedLevels) state.completedLevels = [];
+        
         this.showMap();
     }
 
@@ -60,7 +95,7 @@ export class CampaignManager {
         this.inMap = true;
         this.levelActive = false;
         state.gameActive = false;
-        document.getElementById('ui-layer').classList.add('hidden'); // Hide HUD
+        document.getElementById('ui-layer').classList.add('hidden'); 
         document.getElementById('world-map-container').classList.remove('hidden');
         document.getElementById('gameCanvas').style.display = 'none';
         
@@ -74,95 +109,160 @@ export class CampaignManager {
         requestAnimationFrame(() => this.animateMap());
     }
 
+    getScale() {
+        return {
+            x: this.mapCanvas.width / BASE_MAP_W,
+            y: this.mapCanvas.height / BASE_MAP_H
+        };
+    }
+
+    handleMouseMove(e) {
+        if(!this.inMap) return;
+        const rect = this.mapCanvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const s = this.getScale();
+        
+        this.hoveredLevel = null;
+        for (let l of LEVELS) {
+            const lx = l.x * s.x;
+            const ly = l.y * s.y;
+            if (dist(mx, my, lx, ly) < 20) {
+                this.hoveredLevel = l;
+                break;
+            }
+        }
+    }
+
+    isLevelUnlocked(id) {
+        if (id === 1) return true;
+        // Check if ANY parent node is in completedLevels
+        const parents = LEVELS.filter(l => l.next && l.next.includes(id));
+        for (let p of parents) {
+            if (state.completedLevels.includes(p.id)) return true;
+        }
+        return false;
+    }
+
     drawMap() {
         const ctx = this.mapCtx;
         const w = this.mapCanvas.width;
         const h = this.mapCanvas.height;
+        const s = this.getScale();
         
-        // Draw Background (Ocean)
-        ctx.fillStyle = '#001020';
+        // 1. Digital Background
+        ctx.fillStyle = '#020b14';
         ctx.fillRect(0, 0, w, h);
 
-        // --- DRAW EUROPE (Simplified) ---
-        ctx.save();
-        ctx.beginPath();
-        ctx.fillStyle = '#0a2a40';
-        ctx.strokeStyle = '#0ff';
-        ctx.lineWidth = 2;
-        
-        const scaleX = w / 1000; 
-        const scaleY = h / 600;
-        
-        ctx.moveTo(100 * scaleX, 450 * scaleY); // Spain
-        ctx.lineTo(200 * scaleX, 400 * scaleY); // France
-        ctx.lineTo(250 * scaleX, 300 * scaleY); // UK/North
-        ctx.lineTo(400 * scaleX, 280 * scaleY); // Germany/North
-        ctx.lineTo(500 * scaleX, 200 * scaleY); // Scandinavia
-        ctx.lineTo(700 * scaleX, 220 * scaleY); // Russia North
-        ctx.lineTo(800 * scaleX, 400 * scaleY); // Russia South
-        ctx.lineTo(600 * scaleX, 450 * scaleY); // Black Sea area
-        ctx.lineTo(500 * scaleX, 500 * scaleY); // Italy/Balkans
-        ctx.lineTo(300 * scaleX, 480 * scaleY); // Italy
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-        
-        // Draw Grid Overlay
+        // Grid
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
         ctx.lineWidth = 1;
-        for(let i=0; i<w; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,h); ctx.stroke(); }
-        for(let i=0; i<h; i+=50) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(w,i); ctx.stroke(); }
+        for(let i=0; i<w; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,h); ctx.stroke(); }
+        for(let i=0; i<h; i+=40) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(w,i); ctx.stroke(); }
 
-        // Draw Connections
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([10, 10]);
-        ctx.beginPath();
-        for(let i=0; i<LEVELS.length-1; i++) {
-            const cur = LEVELS[i];
-            const next = LEVELS[i+1];
-            ctx.moveTo(cur.x, cur.y);
-            ctx.lineTo(next.x, next.y);
-        }
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Draw Nodes
+        // 2. Draw Connections
+        ctx.save();
         LEVELS.forEach(l => {
-            const isUnlocked = l.id <= state.campaignProgress;
-            const isCompleted = l.id < state.campaignProgress;
+            if (l.next) {
+                l.next.forEach(nextId => {
+                    const nextL = LEVELS.find(x => x.id === nextId);
+                    if (nextL) {
+                        const unlocked = this.isLevelUnlocked(nextL.id);
+                        ctx.strokeStyle = unlocked ? '#0aa' : '#223';
+                        ctx.lineWidth = unlocked ? 3 : 1;
+                        if (!unlocked) ctx.setLineDash([5, 10]);
+                        else ctx.setLineDash([]);
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(l.x * s.x, l.y * s.y);
+                        ctx.lineTo(nextL.x * s.x, nextL.y * s.y);
+                        ctx.stroke();
+                    }
+                });
+            }
+        });
+        ctx.restore();
+
+        // 3. Draw Nodes
+        LEVELS.forEach(l => {
+            const isCompleted = state.completedLevels.includes(l.id);
+            const isUnlocked = this.isLevelUnlocked(l.id);
             
-            // Halo
+            const lx = l.x * s.x;
+            const ly = l.y * s.y;
+            
+            // Halo for available
             if (isUnlocked && !isCompleted) {
                 const pulse = Math.sin(Date.now() * 0.005) * 5;
                 ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
-                ctx.beginPath(); ctx.arc(l.x, l.y, 15 + pulse, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(lx, ly, 14 + pulse, 0, Math.PI*2); ctx.fill();
             }
 
             // Dot
-            ctx.fillStyle = isCompleted ? '#0f0' : (isUnlocked ? '#0ff' : '#555');
-            if (l.type === 'boss') ctx.fillStyle = isCompleted ? '#0f0' : (isUnlocked ? '#f00' : '#500');
+            ctx.fillStyle = isCompleted ? '#0f0' : (isUnlocked ? '#0ff' : '#444');
+            if (l.type === 'boss') ctx.fillStyle = isCompleted ? '#0f0' : (isUnlocked ? '#f00' : '#522');
             
-            ctx.beginPath(); ctx.arc(l.x, l.y, 10, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(lx, ly, 10, 0, Math.PI*2); ctx.fill();
             
             // Text
-            ctx.fillStyle = '#fff';
-            ctx.font = '12px Orbitron';
-            ctx.textAlign = 'center';
-            ctx.fillText(l.name, l.x, l.y + 25);
-            if(l.type === 'boss') ctx.fillText("(BOSS)", l.x, l.y + 38);
+            if (isUnlocked || isCompleted) {
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.fillText(l.name, lx, ly + 25);
+            }
         });
         
-        // Title
-        ctx.fillStyle = '#0ff';
-        ctx.font = '30px Orbitron';
-        ctx.textAlign = 'center';
-        ctx.fillText("CAMPAIGN MAP: OPERATION EUROPE", w/2, 50);
+        // 4. Hover Tooltip
+        if (this.hoveredLevel) {
+            const l = this.hoveredLevel;
+            const lx = l.x * s.x;
+            const ly = l.y * s.y;
+            const isUnlocked = this.isLevelUnlocked(l.id);
+            
+            const boxW = 160;
+            const boxH = 70;
+            let bx = lx + 20; let by = ly - 50;
+            if (bx + boxW > w) bx = lx - boxW - 20; // Flip if off screen
+            
+            ctx.fillStyle = 'rgba(0, 15, 30, 0.95)';
+            ctx.strokeStyle = isUnlocked ? '#0ff' : '#555';
+            ctx.lineWidth = 1;
+            ctx.fillRect(bx, by, boxW, boxH);
+            ctx.strokeRect(bx, by, boxW, boxH);
+            
+            ctx.textAlign = 'left';
+            ctx.fillStyle = isUnlocked ? '#fff' : '#888';
+            ctx.font = 'bold 12px Orbitron';
+            ctx.fillText(l.name, bx + 10, by + 20);
+            
+            ctx.font = '10px Orbitron';
+            ctx.fillStyle = '#aaa';
+            ctx.fillText(`Type: ${l.type.toUpperCase()}`, bx + 10, by + 35);
+            
+            if (l.unlock) {
+                ctx.fillStyle = '#ff0';
+                ctx.fillText(`REWARD: ${l.unlock.toUpperCase()}`, bx + 10, by + 55);
+            } else {
+                 ctx.fillStyle = '#555';
+                 ctx.fillText(`REWARD: ---`, bx + 10, by + 55);
+            }
+            
+            if (!isUnlocked) {
+                 ctx.fillStyle = '#f00';
+                 ctx.textAlign = 'right';
+                 ctx.fillText("LOCKED", bx + boxW - 10, by + 20);
+            }
+        }
         
-        ctx.font = '14px Orbitron';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText("CLICK A FLASHING NODE TO DEPLOY", w/2, 80);
+        // Header
+        ctx.fillStyle = '#0ff';
+        ctx.font = '20px Orbitron';
+        ctx.textAlign = 'center';
+        ctx.fillText("GLOBAL TACTICAL MAP", w/2, 40);
+        ctx.font = '12px Orbitron';
+        ctx.fillStyle = '#555';
+        ctx.fillText("SELECT MISSION TO DEPLOY", w/2, 60);
     }
 
     handleMapClick(e) {
@@ -170,10 +270,13 @@ export class CampaignManager {
         const rect = this.mapCanvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
+        const s = this.getScale();
 
         LEVELS.forEach(l => {
-            if (l.id <= state.campaignProgress) {
-                if (dist(mx, my, l.x, l.y) < 20) {
+            const lx = l.x * s.x;
+            const ly = l.y * s.y;
+            if (dist(mx, my, lx, ly) < 20) {
+                if (this.isLevelUnlocked(l.id)) {
                     this.startLevel(l);
                 }
             }
@@ -198,7 +301,7 @@ export class CampaignManager {
         state.flag.raised = false;
         state.flag.currentHeight = 0;
         state.flag.raising = false;
-        state.centralMsg.timer = 0; // Clear any old messages
+        state.centralMsg.timer = 0;
         
         // Generate Level Terrain
         generateCampaignTerrain(levelData);
@@ -206,36 +309,32 @@ export class CampaignManager {
         // Setup Player
         state.player = new Tank(true, 1, 'player');
         state.player.name = "COMMANDER";
-        state.player.x = 200; // Start at left
+        state.player.x = 200;
         state.player.y = -500;
         
-        // --- WEAPON LOADOUT LOGIC ---
-        // Reset Ammo
+        // Weapon Loadout Logic (Based on COMPLETED levels)
         state.player.ammo = { 'standard': Infinity, 'scatter': 0, 'laser': 0, 'nuke': 0, 'seeker': 0, 'builder': 0 };
         state.player.currentWeapon = 'standard';
         
-        // Check previously unlocked weapons (all levels before this one)
         LEVELS.forEach(l => {
-            if (l.id < levelData.id && l.unlock) {
-                // Give some starter ammo for unlocked weapons
+            if (state.completedLevels.includes(l.id) && l.unlock) {
+                // Give starter ammo for unlocked weapons
                 state.player.ammo[l.unlock] += 5; 
             }
         });
         
-        // Announce current level unlock
+        // Announcement
         if (levelData.unlock) {
             setTimeout(() => {
-                log(`INTEL: ${levelData.unlock.toUpperCase()} WEAPON AVAILABLE IN CRATES`);
-                state.centralMsg.text = `UNLOCK: ${levelData.unlock.toUpperCase()}`;
+                log(`INTEL: ${levelData.unlock.toUpperCase()} TECH DETECTED`);
+                state.centralMsg.text = `FIND: ${levelData.unlock.toUpperCase()}`;
                 state.centralMsg.color = "#ff0";
                 state.centralMsg.timer = 120;
             }, 1000);
         }
 
-        // Populate Enemies based on Difficulty
         this.spawnLevelEnemies(levelData);
 
-        // Update HUD
         document.getElementById('hud-level').innerText = levelData.name.toUpperCase();
         updateHUD();
         
@@ -248,20 +347,28 @@ export class CampaignManager {
         const len = levelData.length;
         
         if (levelData.type === 'boss') {
-            // Spawn Boss
             const boss = new Tank(false, 2, 'boss_1', true);
             boss.x = len - 500;
             boss.y = -500;
-            boss.maxHp = 500 * levelData.difficulty;
+            
+            // --- BOSS NERF FOR LEVEL 7 ---
+            if (levelData.id === 7) { 
+                 boss.maxHp = 1500; // Easier than standard scaling
+                 boss.name = "GATE KEEPER";
+                 boss.difficulty = 4;
+            } else {
+                 boss.maxHp = 500 * levelData.difficulty;
+                 boss.name = "MEGA TANK";
+                 boss.difficulty = 10;
+            }
+            
             boss.hp = boss.maxHp;
-            boss.name = "MEGA TANK";
             boss.behavior = 'boss';
-            boss.difficulty = 10;
             state.remotePlayers[boss.id] = boss;
             return;
         }
 
-        // Standard Linear Level Spawns
+        // Standard Spawns
         for(let i=0; i<count; i++) {
             const xPos = fxRand(800, len - 800);
             const id = `enemy_${i}`;
@@ -272,11 +379,10 @@ export class CampaignManager {
             t.maxHp = t.hp;
             t.difficulty = levelData.difficulty;
             
-            // Random Behaviors
             const r = Math.random();
-            if (r < 0.3) t.behavior = 'static'; // Turret
-            else if (r < 0.6) t.behavior = 'patrol'; // Back and forth
-            else t.behavior = 'chase'; // Standard
+            if (r < 0.3) t.behavior = 'static'; 
+            else if (r < 0.6) t.behavior = 'patrol'; 
+            else t.behavior = 'chase'; 
             
             state.remotePlayers[id] = t;
         }
@@ -289,29 +395,24 @@ export class CampaignManager {
 
         // Check Flag Interaction
         if (state.flag.active && !state.flag.raised && !state.flag.raising) {
-            // Check collision with flag pole area
             if (Math.abs(state.player.x - state.flag.x) < 50) {
-                // Count enemies
                 const enemies = Object.values(state.remotePlayers).filter(e => !e.dead);
                 if (enemies.length > 0) {
-                     // Warn player (once every few seconds)
                      if (this.warningCooldown <= 0) {
                          state.centralMsg.text = "ELIMINATE ALL HOSTILES";
                          state.centralMsg.color = "#f00";
-                         state.centralMsg.timer = 120; // 2 seconds visible
-                         this.warningCooldown = 180; // 3 seconds cooldown
+                         state.centralMsg.timer = 120;
+                         this.warningCooldown = 180;
                      }
                 } else {
-                    // Start Raising Flag
                     state.flag.raising = true;
-                    log("SECURING SECTOR...");
+                    log("CAPTURING SECTOR...");
                 }
             }
         }
 
-        // Handle Flag Animation
         if (state.flag.raising) {
-            state.flag.currentHeight += 1; // Animation speed
+            state.flag.currentHeight += 1;
             if (state.flag.currentHeight >= state.flag.poleHeight - 10) {
                 state.flag.raised = true;
                 state.flag.raising = false;
@@ -319,15 +420,12 @@ export class CampaignManager {
             }
         }
         
-        // Spawn help crates occasionally
+        // Spawn crates
         if (Math.random() < 0.002) {
-             // Only spawn ammo for weapons unlocked SO FAR
-             const levelData = LEVELS.find(l => l.id === state.currentLevelId);
              let possibleDrops = ['repair', 'ammo'];
-             
-             // Add unlocked weapons to pool
+             // Only drop unlocked items
              LEVELS.forEach(l => {
-                 if (l.id <= levelData.id && l.unlock) possibleDrops.push(l.unlock);
+                 if (state.completedLevels.includes(l.id) && l.unlock) possibleDrops.push(l.unlock);
              });
              
              const type = possibleDrops[Math.floor(Math.random()*possibleDrops.length)];
@@ -339,26 +437,25 @@ export class CampaignManager {
     levelComplete(levelData) {
         this.levelActive = false;
         state.gameActive = false;
-        log("MISSION ACCOMPLISHED!");
+        log("MISSION SUCCESSFUL");
         
-        createExplosion(state.flag.x, state.flag.y, 'heal'); // Celebration fx
+        createExplosion(state.flag.x, state.flag.y, 'heal');
         
-        // Show in-game message instead of alert
         state.centralMsg.text = "SECTOR SECURED";
         state.centralMsg.color = "#0f0";
-        state.centralMsg.timer = 180; // 3 seconds
+        state.centralMsg.timer = 180;
+
+        // Save Progress
+        if (!state.completedLevels.includes(levelData.id)) {
+            state.completedLevels.push(levelData.id);
+        }
 
         setTimeout(() => {
-            if (state.currentLevelId === state.campaignProgress) {
-                state.campaignProgress++;
-            }
-            if (state.campaignProgress > LEVELS.length) {
-                // Campaign Finished
-                state.centralMsg.text = "EUROPE LIBERATED!";
+            if (levelData.id === 20) { // Final Level
+                state.centralMsg.text = "CAMPAIGN VICTORY!";
                 setTimeout(() => {
-                    state.campaignProgress = 1;
                     this.showMap();
-                }, 3000);
+                }, 4000);
             } else {
                 this.showMap();
             }

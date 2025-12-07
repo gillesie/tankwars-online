@@ -11,6 +11,8 @@
 <body>
     <canvas id="gameCanvas"></canvas>
 
+    <div id="ui-tooltip" class="hidden"></div>
+
     <div id="ui-layer">
         <div class="hud-top">
             <div class="stat-box" id="hp-box">
@@ -29,12 +31,12 @@
             <div class="stat-box weapon-selector">
                 <span class="stat-label">WEAPON SYSTEMS</span>
                 <div class="weapon-grid">
-                    <div class="weapon-btn active" id="btn-standard" onclick="selectWeapon('standard')"><span class="w-icon">●</span><span>STD</span><span id="ammo-standard">∞</span></div>
-                    <div class="weapon-btn" id="btn-scatter" onclick="selectWeapon('scatter')"><span class="w-icon">⁙</span><span>SCTR</span><span id="ammo-scatter">0</span></div>
-                    <div class="weapon-btn" id="btn-laser" onclick="selectWeapon('laser')"><span class="w-icon">━</span><span>LASR</span><span id="ammo-laser">0</span></div>
-                    <div class="weapon-btn" id="btn-seeker" onclick="selectWeapon('seeker')"><span class="w-icon">◎</span><span>SEEK</span><span id="ammo-seeker">0</span></div>
-                    <div class="weapon-btn" id="btn-nuke" onclick="selectWeapon('nuke')"><span class="w-icon">☢</span><span>NUKE</span><span id="ammo-nuke">0</span></div>
-                    <div class="weapon-btn builder" id="btn-builder" onclick="selectWeapon('builder')"><span class="w-icon">⚒</span><span>BUILD</span><span id="ammo-builder">∞</span></div>
+                    <div class="weapon-btn active" id="btn-standard" onclick="selectWeapon('standard')" onmouseenter="window.showTooltip('standard')" onmouseleave="window.hideTooltip()"><span class="w-icon">●</span><span>STD</span><span id="ammo-standard">∞</span></div>
+                    <div class="weapon-btn" id="btn-scatter" onclick="selectWeapon('scatter')" onmouseenter="window.showTooltip('scatter')" onmouseleave="window.hideTooltip()"><span class="w-icon">⁙</span><span>SCTR</span><span id="ammo-scatter">0</span></div>
+                    <div class="weapon-btn" id="btn-laser" onclick="selectWeapon('laser')" onmouseenter="window.showTooltip('laser')" onmouseleave="window.hideTooltip()"><span class="w-icon">━</span><span>LASR</span><span id="ammo-laser">0</span></div>
+                    <div class="weapon-btn" id="btn-seeker" onclick="selectWeapon('seeker')" onmouseenter="window.showTooltip('seeker')" onmouseleave="window.hideTooltip()"><span class="w-icon">◎</span><span>SEEK</span><span id="ammo-seeker">0</span></div>
+                    <div class="weapon-btn" id="btn-nuke" onclick="selectWeapon('nuke')" onmouseenter="window.showTooltip('nuke')" onmouseleave="window.hideTooltip()"><span class="w-icon">☢</span><span>NUKE</span><span id="ammo-nuke">0</span></div>
+                    <div class="weapon-btn builder" id="btn-builder" onclick="selectWeapon('builder')" onmouseenter="window.showTooltip('builder')" onmouseleave="window.hideTooltip()"><span class="w-icon">⚒</span><span>BUILD</span><span id="ammo-builder">∞</span></div>
                 </div>
             </div>
         </div>

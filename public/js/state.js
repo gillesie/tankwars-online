@@ -22,11 +22,13 @@ export const state = {
     blocks: [],
     wind: 0,
     screenShake: 0,
+    levelWidth: 6000,  // NEW
+    levelHeight: 1500, // NEW
     
     // Flag for Campaign End
     flag: { x: 0, y: 0, poleHeight: 80, currentHeight: 0, raising: false, raised: false, active: false },
     
-    // NEW: Central Message System (for notifications)
+    // Central Message System
     centralMsg: { text: '', color: '#fff', timer: 0 },
 
     // Camera
@@ -51,6 +53,7 @@ export const state = {
     
     // Config
     gameConfig: { unlockWeapons: false },
+    unlockedWeapons: ['standard', 'builder'], // NEW
 	
 	// Game Modes
 	gameMode: 'menu', // 'menu', 'mp', 'sp', 'campaign'
@@ -61,6 +64,6 @@ export const state = {
     // Campaign
     campaignManager: null,
     campaignProgress: 1,
-    completedLevels: [], // Tracks IDs of completed levels for branching paths
+    completedLevels: [],
     currentLevelId: 0
 };

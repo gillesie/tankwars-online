@@ -74,12 +74,36 @@ function drawTrajectory(ctx, tank, scaleX = 1, scaleY = 1, offsetX = 0, offsetY 
 function drawMinimap() {
     const ctx = state.minimapCtx;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 300, 180);
-    const scaleX = 300 / TERRAIN_WIDTH;
-    const scaleY = 180 / WORLD_HEIGHT; 
     
+    // --- FIX: DYNAMIC SCALING ---
+    // Use state.levelWidth if available (Campaign), else default
+    const mapW = state.levelWidth || TERRAIN_WIDTH;
+    const mapH = state.levelHeight || WORLD_HEIGHT;
+    
+    const scaleX = 300 / mapW;
+    const scaleY = 180 / mapH; 
+    
+    // --- FIX: TERRAIN DRAWING ---
+    // Draw terrain polyline without gaps (removed % check that caused disappearing)
     ctx.strokeStyle = '#055';
-    ctx.beginPath(); ctx.moveTo(0, 180);
-    for(let p of state.terrainPoints) { if (p.x % 100 < 20) ctx.lineTo(p.x * scaleX, p.y * scaleY); }
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    
+    // Start from bottom left
+    ctx.moveTo(0, 180);
+    
+    // Simplify points for performance but ensure connectivity
+    const step = 5; 
+    for(let i=0; i<state.terrainPoints.length; i+=step) {
+        const p = state.terrainPoints[i];
+        ctx.lineTo(p.x * scaleX, p.y * scaleY);
+    }
+    // Ensure last point
+    if(state.terrainPoints.length > 0) {
+        const last = state.terrainPoints[state.terrainPoints.length - 1];
+        ctx.lineTo(last.x * scaleX, last.y * scaleY);
+    }
+    
     ctx.stroke();
 
     ctx.lineWidth = 2;
@@ -117,8 +141,13 @@ function drawMinimap() {
     ctx.fillStyle = '#fff';
     state.planes.forEach(p => { ctx.fillRect(p.x * scaleX, p.y * scaleY, 5, 3); });
 
-    ctx.fillStyle = '#0f0';
-    state.crates.forEach(c => { ctx.fillRect((c.x * scaleX)-1, (c.y * scaleY)-1, 3, 3); });
+    // Crate colors on minimap
+    state.crates.forEach(c => { 
+        if (c.type === 'repair') ctx.fillStyle = '#0f0';
+        else if (c.type === 'extra_life') ctx.fillStyle = '#fff';
+        else ctx.fillStyle = '#f0f';
+        ctx.fillRect((c.x * scaleX)-1, (c.y * scaleY)-1, 3, 3); 
+    });
 }
 
 function animate() {
@@ -150,10 +179,7 @@ function animate() {
         let targetCamY = state.player.y - (state.height / 2 / state.camera.zoom); 
         
         let maxW = TERRAIN_WIDTH;
-        if (state.gameMode === 'campaign' && state.campaignManager && state.campaignManager.LEVELS) {
-             const lvl = state.campaignManager.LEVELS.find(l => l.id === state.currentLevelId);
-             if (lvl) maxW = lvl.length;
-        }
+        if (state.gameMode === 'campaign') maxW = state.levelWidth; // Dynamic camera limit
         
         const viewW = state.width / state.camera.zoom;
         targetCamX = clamp(targetCamX, 0, maxW - viewW); 
@@ -185,20 +211,13 @@ function animate() {
     drawTerrain(ctx);
     state.blocks.forEach(b => b.draw(ctx));
 
-    // --- DRAW FLAG (Campaign) ---
     if (state.gameMode === 'campaign' && state.flag.active) {
         ctx.save();
         ctx.translate(state.flag.x, state.flag.y);
-        
-        // Pole
         ctx.fillStyle = '#888';
         ctx.fillRect(-2, -state.flag.poleHeight, 4, state.flag.poleHeight);
-        
-        // Top Ball
         ctx.fillStyle = '#ff0';
         ctx.beginPath(); ctx.arc(0, -state.flag.poleHeight, 4, 0, Math.PI*2); ctx.fill();
-        
-        // Flag
         const fh = -state.flag.poleHeight + (state.flag.poleHeight - 10 - state.flag.currentHeight);
         ctx.fillStyle = state.flag.raised ? '#0f0' : '#f00';
         ctx.beginPath();
@@ -206,7 +225,6 @@ function animate() {
         ctx.lineTo(30, fh + 10);
         ctx.lineTo(0, fh + 20);
         ctx.fill();
-        
         ctx.restore();
     }
 
@@ -238,10 +256,9 @@ function animate() {
 
     ctx.restore();
     
-    // --- DRAW CENTRAL MESSAGE ---
     if (state.centralMsg.timer > 0) {
         state.centralMsg.timer--;
-        const ctxUI = state.ctx; // Draw on main context (on top)
+        const ctxUI = state.ctx; 
         ctxUI.save();
         ctxUI.globalAlpha = Math.min(1, state.centralMsg.timer / 30);
         ctxUI.fillStyle = state.centralMsg.color;

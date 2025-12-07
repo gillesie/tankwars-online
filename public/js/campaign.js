@@ -55,7 +55,7 @@ export class CampaignManager {
         this.mapCtx = this.mapCanvas.getContext('2d');
         this.levelActive = false;
         
-        // Expose levels
+        // Expose levels for game loop access
         this.LEVELS = LEVELS;
         this.warningCooldown = 0;
         this.hoveredLevel = null;
@@ -306,24 +306,32 @@ export class CampaignManager {
         // Generate Level Terrain
         generateCampaignTerrain(levelData);
         
+        // --- NEW: SET LEVEL DIMENSIONS ---
+        state.levelWidth = levelData.length || 6000;
+        state.levelHeight = 2500; // Increased height for deep valleys
+        
         // Setup Player
         state.player = new Tank(true, 1, 'player');
         state.player.name = "COMMANDER";
         state.player.x = 200;
         state.player.y = -500;
         
-        // Weapon Loadout Logic (Based on COMPLETED levels)
-        state.player.ammo = { 'standard': Infinity, 'scatter': 0, 'laser': 0, 'nuke': 0, 'seeker': 0, 'builder': 0 };
+        // --- NEW: DETERMINE UNLOCKED WEAPONS ---
+        state.unlockedWeapons = ['standard', 'builder']; // Base weapons
+        state.player.ammo = { 'standard': Infinity, 'scatter': 0, 'laser': 0, 'nuke': 0, 'seeker': 0, 'builder': Infinity };
         state.player.currentWeapon = 'standard';
         
+        // Iterate through COMPLETED levels to build loadout
         LEVELS.forEach(l => {
             if (state.completedLevels.includes(l.id) && l.unlock) {
-                // Give starter ammo for unlocked weapons
-                state.player.ammo[l.unlock] += 5; 
+                state.player.ammo[l.unlock] += 5; // Starter ammo for unlocked guns
+                if (!state.unlockedWeapons.includes(l.unlock)) {
+                    state.unlockedWeapons.push(l.unlock);
+                }
             }
         });
         
-        // Announcement
+        // Announce current level unlock
         if (levelData.unlock) {
             setTimeout(() => {
                 log(`INTEL: ${levelData.unlock.toUpperCase()} TECH DETECTED`);
@@ -411,8 +419,9 @@ export class CampaignManager {
             }
         }
 
+        // Handle Flag Animation
         if (state.flag.raising) {
-            state.flag.currentHeight += 1;
+            state.flag.currentHeight += 1; // Animation speed
             if (state.flag.currentHeight >= state.flag.poleHeight - 10) {
                 state.flag.raised = true;
                 state.flag.raising = false;
@@ -420,10 +429,11 @@ export class CampaignManager {
             }
         }
         
-        // Spawn crates
+        // Spawn help crates occasionally
         if (Math.random() < 0.002) {
-             let possibleDrops = ['repair', 'ammo'];
-             // Only drop unlocked items
+             let possibleDrops = ['repair', 'ammo', 'extra_life']; // Added extra_life
+             
+             // Add unlocked weapons to pool
              LEVELS.forEach(l => {
                  if (state.completedLevels.includes(l.id) && l.unlock) possibleDrops.push(l.unlock);
              });
@@ -439,7 +449,7 @@ export class CampaignManager {
         state.gameActive = false;
         log("MISSION SUCCESSFUL");
         
-        createExplosion(state.flag.x, state.flag.y, 'heal');
+        createExplosion(state.flag.x, state.flag.y, 'heal'); // Celebration fx
         
         state.centralMsg.text = "SECTOR SECURED";
         state.centralMsg.color = "#0f0";

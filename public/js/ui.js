@@ -11,6 +11,16 @@ export function log(msg) {
     if(div.children.length > 5) div.removeChild(div.firstChild);
 }
 
+// --- NEW: Tooltip Data ---
+const WEAPON_DESC = {
+    'standard': "Standard ballistic shell. Unlimited ammo.",
+    'scatter': "Fires a spread of 5 projectiles. Good for crowds.",
+    'laser': "High-velocity beam. Unaffected by wind/gravity.",
+    'seeker': "Homing missile. Locks onto nearest heat signature.",
+    'nuke': "Tactical nuclear warhead. Massive area damage.",
+    'builder': "Fabricate terrain. Drag mouse to build platforms."
+};
+
 export function updateHUD() {
     if (!state.player) return;
     const p = state.player;
@@ -26,12 +36,21 @@ export function updateHUD() {
         if(btn) {
             let val = p.ammo[w] === Infinity ? '∞' : p.ammo[w];
             ammoSpan.innerText = val;
+            
+            // --- NEW: Handle Locked State ---
+            if (state.gameMode === 'campaign' && state.unlockedWeapons && !state.unlockedWeapons.includes(w)) {
+                btn.classList.add('locked');
+                btn.onclick = (e) => { e.stopPropagation(); return false; }; // Disable click
+            } else {
+                btn.classList.remove('locked');
+                btn.onclick = () => window.selectWeapon(w); // Re-enable
+            }
+
             if (p.currentWeapon === w) btn.classList.add('active');
             else btn.classList.remove('active');
         }
     });
 
-    // CAMPAIGN FIX: Hide power overlay in campaign mode
     if (state.gameMode === 'campaign') {
         document.getElementById('power-overlay').style.display = 'none';
     } else {
@@ -47,15 +66,46 @@ export function updateHUD() {
     }
 }
 
+// --- NEW: Blink Animation for Pickup ---
+export function blinkWeapon(type) {
+    const btn = document.getElementById('btn-' + type);
+    if(btn) {
+        btn.classList.remove('blink');
+        void btn.offsetWidth; // Trigger reflow
+        btn.classList.add('blink');
+    }
+}
+
+// --- NEW: Global Tooltip Handlers ---
+window.showTooltip = function(type) {
+    const tip = document.getElementById('ui-tooltip');
+    const btn = document.getElementById('btn-' + type);
+    if (!tip || !btn) return;
+    
+    const isLocked = state.gameMode === 'campaign' && state.unlockedWeapons && !state.unlockedWeapons.includes(type);
+    
+    tip.innerHTML = `
+        <span class="tt-title">${type.toUpperCase()} SYSTEM</span>
+        <span class="tt-desc">${isLocked ? "WEAPON DATA ENCRYPTED.<br>UNLOCK REQUIRED." : WEAPON_DESC[type]}</span>
+        ${isLocked ? '<br><span class="tt-locked">STATUS: LOCKED</span>' : ''}
+    `;
+    
+    const rect = btn.getBoundingClientRect();
+    tip.style.left = (rect.left - 210) + 'px'; // Show to left of button
+    tip.style.top = rect.top + 'px';
+    tip.classList.remove('hidden');
+};
+
+window.hideTooltip = function() {
+    document.getElementById('ui-tooltip').classList.add('hidden');
+};
+
 export function updateScoreboard() {
     if (!state.player) return;
-    
-    // CAMPAIGN FIX: Hide Scoreboard (Blue/Red box)
     if (state.gameMode === 'campaign') {
         document.getElementById('scoreboard').style.display = 'none';
         return;
     }
-    
     document.getElementById('scoreboard').style.display = 'block';
 
     const blueList = document.getElementById('sb-list-1');
@@ -66,7 +116,6 @@ export function updateScoreboard() {
     let blueCount = 0; let redCount = 0;
 
     allPlayers.forEach(p => {
-        // Single Player: Hide dead enemies
         if (state.gameMode === 'sp' && p.dead && p.team !== state.player.team) return;
 
         const div = document.createElement('div');
